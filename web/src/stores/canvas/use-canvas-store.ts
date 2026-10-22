@@ -4,6 +4,7 @@ import { persist, type PersistStorage, type StorageValue } from "zustand/middlew
 import { nanoid } from "nanoid";
 import i18n from "@/i18n";
 import { localForageStorage } from "@/lib/localforage-storage";
+import { deferSharedWrite, isSharedStorageEnabled } from "@/lib/shared-storage";
 import type { CanvasBackgroundMode } from "@/lib/canvas-theme";
 import type { CanvasAssistantSession, CanvasConnection, CanvasNodeData, ViewportTransform } from "@/types/canvas";
 
@@ -58,10 +59,15 @@ const canvasStorage: PersistStorage<CanvasStore> = {
         if (queuedPersistState && queuedPersistState.projects === nextState.projects && queuedPersistState.deletedProjects === nextState.deletedProjects) return;
         queuedPersistState = nextState;
         if (saveTimer) clearTimeout(saveTimer);
-        saveTimer = setTimeout(() => {
+        const writeNow = () => {
+            if (saveTimer) clearTimeout(saveTimer);
             saveTimer = null;
             void localForageStorage.setItem(name, JSON.stringify(value));
-        }, 400);
+            // Register the request before removing its debounce marker; pending never briefly reaches zero.
+            if (isSharedStorageEnabled()) deferSharedWrite(name);
+        };
+        saveTimer = setTimeout(writeNow, 400);
+        if (isSharedStorageEnabled()) deferSharedWrite(name, writeNow);
     },
     removeItem: (name) => localForageStorage.removeItem(name),
 };
@@ -132,6 +138,7 @@ export const useCanvasStore = create<CanvasStore>()(
         }),
         {
             name: CANVAS_STORE_KEY,
+            skipHydration: isSharedStorageEnabled(),
             storage: canvasStorage,
             partialize: (state) =>
                 ({

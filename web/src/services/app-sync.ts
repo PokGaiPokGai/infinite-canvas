@@ -1,4 +1,4 @@
-import localforage from "localforage";
+import { createAppStorage } from "@/lib/shared-storage";
 
 import i18n from "@/i18n";
 import { getMediaBlob, resolveMediaUrl, setMediaBlob } from "@/services/file-storage";
@@ -76,8 +76,8 @@ export type AppSyncProgressEvent = {
 export type AppSyncProgress = (event: AppSyncProgressEvent) => void;
 
 const FILE_CONCURRENCY = 3;
-const imageLogStore = localforage.createInstance({ name: "infinite-canvas", storeName: "image_generation_logs" });
-const videoLogStore = localforage.createInstance({ name: "infinite-canvas", storeName: "video_generation_logs" });
+const imageLogStore = createAppStorage({ name: "infinite-canvas", storeName: "image_generation_logs" });
+const videoLogStore = createAppStorage({ name: "infinite-canvas", storeName: "video_generation_logs" });
 type LogStore = typeof imageLogStore;
 const storageKeyPattern = /^(image|video|audio|file|video-reference|audio-reference):/;
 

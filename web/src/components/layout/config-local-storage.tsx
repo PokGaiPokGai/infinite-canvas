@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { readLocalStorageUsage, type LocalStorageUsage } from "@/services/local-storage-usage";
+import { isSharedStorageEnabled } from "@/lib/shared-storage";
 
 const storeLabelKeys: Record<string, string> = {
     app_state: "appState",
@@ -22,6 +23,7 @@ export function ConfigLocalStorage({ active }: { active: boolean }) {
     const [usage, setUsage] = useState<LocalStorageUsage | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
+    const shared = isSharedStorageEnabled();
 
     const refresh = useCallback(async () => {
         setLoading(true);
@@ -49,9 +51,9 @@ export function ConfigLocalStorage({ active }: { active: boolean }) {
                     <div>
                         <div className="flex items-center gap-2 text-sm font-semibold">
                             <Database className="size-4" />
-                            {t("config.localStorage.title")}
+                            {shared ? "本机共享存储" : t("config.localStorage.title")}
                         </div>
-                        <div className="mt-1 text-xs text-stone-500">{t("config.localStorage.description")}</div>
+                        <div className="mt-1 text-xs text-stone-500">{shared ? "画布、渠道配置、资产和生成记录保存在本机数据库，普通浏览器与独立窗口共用。缩略图和提示词缓存仍由各浏览器保存。" : t("config.localStorage.description")}</div>
                     </div>
                     <Button icon={<RefreshCw className="size-4" />} loading={loading} onClick={() => void refresh()}>
                         {t("config.localStorage.refresh")}
@@ -63,9 +65,9 @@ export function ConfigLocalStorage({ active }: { active: boolean }) {
                 ) : usage ? (
                     <>
                         <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                            <StorageMetric icon={<Database className="size-4" />} label={t("config.localStorage.indexedDbUsage")} value={formatStorageBytes(indexedDbBytes)} hint={t("config.localStorage.contentEstimate")} />
-                            <StorageMetric icon={<HardDrive className="size-4" />} label={t("config.localStorage.siteUsage")} value={formatStorageBytes(usage.usage)} hint={t("config.localStorage.siteUsageHint")} />
-                            <StorageMetric icon={<Layers3 className="size-4" />} label={t("config.localStorage.quota")} value={formatStorageBytes(usage.quota)} hint={usage.quota ? t("config.localStorage.quotaHint") : t("config.localStorage.quotaUnavailable")} />
+                            <StorageMetric icon={<Database className="size-4" />} label={shared ? "当前内容" : t("config.localStorage.indexedDbUsage")} value={formatStorageBytes(indexedDbBytes)} hint={shared ? "应用记录和媒体" : t("config.localStorage.contentEstimate")} />
+                            <StorageMetric icon={<HardDrive className="size-4" />} label={shared ? "内容与备份" : t("config.localStorage.siteUsage")} value={formatStorageBytes(usage.usage)} hint={shared ? "包含历史版本与迁移备份" : t("config.localStorage.siteUsageHint")} />
+                            <StorageMetric icon={<Layers3 className="size-4" />} label={shared ? "历史版本" : t("config.localStorage.quota")} value={shared ? String(usage.databases[0]?.stores[1]?.records ?? 0) : formatStorageBytes(usage.quota)} hint={shared ? "保留在本机的历史副本" : usage.quota ? t("config.localStorage.quotaHint") : t("config.localStorage.quotaUnavailable")} />
                         </div>
                         {usage.quota ? (
                             <div className="mt-4">

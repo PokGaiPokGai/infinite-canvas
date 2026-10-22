@@ -1,0 +1,69 @@
+{
+  "app": "infinite-canvas",
+  "version": 1,
+  "exportedAt": "2026-10-15T15:48:57.964Z",
+  "config": {
+    "channelMode": "local",
+    "baseUrl": "http://127.0.0.1:3000/comfy",
+    "apiKey": "local-comfyui",
+    "apiFormat": "openai",
+    "channels": [
+      {
+        "id": "comfyui",
+        "name": "本机 ComfyUI · SDXL Lightning",
+        "baseUrl": "http://127.0.0.1:3000/comfy",
+        "apiKey": "local-comfyui",
+        "apiFormat": "openai",
+        "models": [
+          {
+            "name": "dreamshaperXL_lightningDPMSDE.safetensors",
+            "capability": "image",
+            "script": "// Infinite Canvas custom image script. Uses the native ComfyUI API, without an API key.\n// DreamShaper XL Lightning: 6 steps, CFG 2, DPM++ SDE / Karras.\n// One reference image enables img2img at denoise 0.65; quality is not an SDXL parameter.\nif (images.length > 1) throw new Error(\"当前 ComfyUI 工作流支持单张参考图，请只保留一张后再生成。\");\nif (params.background === \"transparent\") throw new Error(\"当前 SDXL 工作流不生成透明背景，请关闭透明背景选项。\");\n\nconst api = baseUrl.replace(/\\/$/, \"\");\nconst call = async (path, data) => {\n    try {\n        return await request({ url: `${api}${path}`, method: data === undefined ? \"get\" : \"post\", data });\n    } catch (error) {\n        const details = error.response?.data;\n        if (details?.error || details?.node_errors) {\n            throw new Error(`ComfyUI 校验失败：${JSON.stringify(details.error || details.node_errors)}`);\n        }\n        throw error;\n    }\n};\n\nlet width = 1024;\nlet height = 1024;\nconst graph = {\n    \"1\": { class_type: \"CheckpointLoaderSimple\", inputs: { ckpt_name: model } },\n    \"2\": { class_type: \"CLIPTextEncode\", inputs: { text: prompt, clip: [\"1\", 1] } },\n    \"3\": { class_type: \"CLIPTextEncode\", inputs: { text: \"blurry, low quality, watermark, text\", clip: [\"1\", 1] } },\n    \"5\": {\n        class_type: \"KSampler\",\n        inputs: {\n            model: [\"1\", 0], positive: [\"2\", 0], negative: [\"3\", 0], latent_image: [\"4\", 0],\n            seed: crypto.getRandomValues(new Uint32Array(1))[0], steps: 6, cfg: 2,\n            sampler_name: \"dpmpp_sde\", scheduler: \"karras\", denoise: 1,\n        },\n    },\n    \"6\": { class_type: \"VAEDecode\", inputs: { samples: [\"5\", 0], vae: [\"1\", 2] } },\n    \"7\": { class_type: \"SaveImage\", inputs: { images: [\"6\", 0], filename_prefix: \"InfiniteCanvas/Canvas\" } },\n};\n\nif (images.length) {\n    const blob = await (await fetch(images[0], { signal })).blob();\n    const bitmap = await createImageBitmap(blob);\n    width = bitmap.width;\n    height = bitmap.height;\n    bitmap.close();\n    const form = new FormData();\n    const suffix = blob.type === \"image/webp\" ? \"webp\" : blob.type === \"image/jpeg\" ? \"jpg\" : \"png\";\n    form.append(\"image\", blob, `canvas-${crypto.randomUUID()}.${suffix}`);\n    form.append(\"subfolder\", \"InfiniteCanvas\");\n    const uploaded = await call(\"/upload/image\", form);\n    const imageName = uploaded.subfolder ? `${uploaded.subfolder}/${uploaded.name}` : uploaded.name;\n    graph[\"8\"] = { class_type: \"LoadImage\", inputs: { image: imageName } };\n    graph[\"9\"] = { class_type: \"ImageScale\", inputs: { image: [\"8\", 0], width, height, upscale_method: \"lanczos\", crop: \"disabled\" } };\n    graph[\"10\"] = { class_type: \"VAEEncode\", inputs: { pixels: [\"9\", 0], vae: [\"1\", 2] } };\n    graph[\"4\"] = { class_type: \"RepeatLatentBatch\", inputs: { samples: [\"10\", 0], amount: params.count } };\n    graph[\"5\"].inputs.denoise = 0.65;\n}\n\nif (params.size) [width, height] = params.size.split(\"x\").map(Number);\nif (images.length) {\n    Object.assign(graph[\"9\"].inputs, { width, height });\n} else {\n    graph[\"4\"] = { class_type: \"EmptyLatentImage\", inputs: { width, height, batch_size: params.count } };\n}\n\nconst submitted = await call(\"/prompt\", { prompt: graph, client_id: `infinite-canvas-${crypto.randomUUID()}` });\nif (!submitted.prompt_id) throw new Error(\"ComfyUI 未返回任务编号。\");\n// Reuse Infinite Canvas's polling defaults. Cancelling the page does not interrupt other ComfyUI jobs.\nconst output = await poll(\n    () => call(`/history/${submitted.prompt_id}`),\n    (history) => {\n        const job = history[submitted.prompt_id];\n        if (!job) return null;\n        if (job.status?.status_str === \"error\") {\n            const failure = job.status.messages?.find(([kind]) => kind === \"execution_error\" || kind === \"execution_interrupted\");\n            throw new Error(`ComfyUI 生成失败：${failure?.[1]?.exception_message || \"任务被中断，请查看 ComfyUI 日志。\"}`);\n        }\n        return job.outputs?.[\"7\"]?.images;\n    },\n);\nreturn output.map((image) => `${api}/view?${new URLSearchParams({ filename: image.filename, subfolder: image.subfolder, type: image.type })}`);\n"
+          }
+        ]
+      }
+    ],
+    "model": "comfyui::dreamshaperXL_lightningDPMSDE.safetensors",
+    "imageModel": "comfyui::dreamshaperXL_lightningDPMSDE.safetensors",
+    "videoModel": "",
+    "textModel": "",
+    "audioModel": "",
+    "models": [
+      "comfyui::dreamshaperXL_lightningDPMSDE.safetensors"
+    ],
+    "audioVoice": "alloy",
+    "audioFormat": "mp3",
+    "audioSpeed": "1",
+    "audioInstructions": "",
+    "videoSeconds": "6",
+    "vquality": "720",
+    "videoGenerateAudio": "true",
+    "videoWatermark": "false",
+    "videoMode": "frames",
+    "systemPrompt": "",
+    "reasoningEffort": "auto",
+    "quality": "auto",
+    "size": "auto",
+    "background": "",
+    "count": "1",
+    "canvasImageCount": "1",
+    "proxyEnabled": false,
+    "proxyUrl": "http://127.0.0.1:23210",
+    "nodeRegenerateBehavior": "new-node",
+    "autoFocusOnSelect": false
+  },
+  "webdav": {
+    "url": "",
+    "username": "",
+    "password": "",
+    "directory": "infinite-canvas",
+    "lastSyncedAt": ""
+  },
+  "promptSources": {
+    "sources": [],
+    "schedule": {
+      "intervalMinutes": 30,
+      "lastFetchedAt": ""
+    }
+  }
+}

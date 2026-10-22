@@ -1,4 +1,4 @@
-import localforage from "localforage";
+import { createAppStorage } from "@/lib/shared-storage";
 
 import type { PluginStorage } from "@/types/canvas-plugin";
 
@@ -32,7 +32,7 @@ const stores = new Map<string, LocalForage>();
 export function createPluginStorage(pluginId: string): PluginStorage {
     let store = stores.get(pluginId);
     if (!store) {
-        store = localforage.createInstance({ name: "infinite-canvas-plugins", storeName: pluginId });
+        store = createAppStorage({ name: "infinite-canvas-plugins", storeName: pluginId });
         stores.set(pluginId, store);
     }
     return {

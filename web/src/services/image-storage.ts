@@ -1,4 +1,5 @@
 import localforage from "localforage";
+import { createAppStorage, isSharedStorageEnabled } from "@/lib/shared-storage";
 
 import { nanoid } from "nanoid";
 import i18n from "@/i18n";
@@ -14,10 +15,10 @@ export type UploadedImage = {
     mimeType: string;
 };
 
-const store = localforage.createInstance({ name: "infinite-canvas", storeName: "image_files" });
+const store = createAppStorage({ name: "infinite-canvas", storeName: "image_files" });
 const previewStore = localforage.createInstance({ name: "infinite-canvas", storeName: "image_previews" });
-const imageLogStore = localforage.createInstance({ name: "infinite-canvas", storeName: "image_generation_logs" });
-const videoLogStore = localforage.createInstance({ name: "infinite-canvas", storeName: "video_generation_logs" });
+const imageLogStore = createAppStorage({ name: "infinite-canvas", storeName: "image_generation_logs" });
+const videoLogStore = createAppStorage({ name: "infinite-canvas", storeName: "video_generation_logs" });
 const objectUrls = new Map<string, string>();
 const previewUrls = new Map<string, string>();
 const previewListeners = new Set<() => void>();
@@ -241,6 +242,8 @@ export async function deleteStoredImages(keys: Iterable<string>) {
 }
 
 export async function cleanupUnusedImages(usedData: unknown) {
+    // 共享数据不能根据一个窗口的快照清理；保留媒体，显式删除操作照常执行。
+    if (isSharedStorageEnabled()) return;
     const usedKeys = collectImageStorageKeys(usedData);
     await Promise.all([
         imageLogStore.iterate((value) => {

@@ -269,8 +269,8 @@ function CanvasNodesTab({ nodes, selectedNodeIds, onFocusNode, onPreviewNode, on
                                         onClick={() => (selectMode ? toggleChecked(node.id) : activateNode(node))}
                                         onMouseEnter={() => onHoverNode(node.id)}
                                         onMouseLeave={(event) => {
-                                            const to = event.relatedTarget as Element | null;
-                                            if (!to || !to.closest("[data-node-item]")) onHoverNode(null);
+                                            const to = event.relatedTarget;
+                                            if (!(to instanceof Element) || !to.closest("[data-node-item]")) onHoverNode(null);
                                         }}
                                         className="group relative flex min-w-0 flex-col rounded-lg p-1 text-left transition hover:bg-black/5 dark:hover:bg-white/5"
                                         style={active ? { background: theme.toolbar.activeBg } : undefined}
@@ -308,8 +308,8 @@ function CanvasNodesTab({ nodes, selectedNodeIds, onFocusNode, onPreviewNode, on
                                     style={active ? { background: theme.toolbar.activeBg } : undefined}
                                     onMouseEnter={() => onHoverNode(node.id)}
                                     onMouseLeave={(event) => {
-                                        const to = event.relatedTarget as Element | null;
-                                        if (!to || !to.closest("[data-node-item]")) onHoverNode(null);
+                                        const to = event.relatedTarget;
+                                        if (!(to instanceof Element) || !to.closest("[data-node-item]")) onHoverNode(null);
                                     }}
                                 >
                                     {depth ? <span className="pointer-events-none absolute -left-3 top-[calc(-50%-0.4rem)] h-[calc(100%+0.4rem)] w-3 rounded-bl-md border-b border-l opacity-45" style={{ borderColor: theme.node.stroke }} /> : null}

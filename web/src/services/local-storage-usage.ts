@@ -1,8 +1,27 @@
+import { getSharedStorageStats, isSharedStorageEnabled } from "@/lib/shared-storage";
+
 export type IndexedDbStoreUsage = { name: string; records: number; bytes: number };
 export type IndexedDbDatabaseUsage = { name: string; version: number; bytes: number; stores: IndexedDbStoreUsage[] };
 export type LocalStorageUsage = { usage: number; quota: number | null; contentBytes: number; databases: IndexedDbDatabaseUsage[] };
 
 export async function readLocalStorageUsage(): Promise<LocalStorageUsage> {
+    if (isSharedStorageEnabled()) {
+        const stats = await getSharedStorageStats();
+        return {
+            usage: stats.bytes + stats.backupBytes,
+            quota: null,
+            contentBytes: stats.bytes,
+            databases: [{
+                name: "本机共享数据库",
+                version: 1,
+                bytes: stats.bytes + stats.backupBytes,
+                stores: [
+                    { name: "应用记录与媒体", records: stats.items, bytes: stats.bytes },
+                    { name: "历史版本与迁移备份", records: stats.versions, bytes: stats.backupBytes },
+                ],
+            }],
+        };
+    }
     const [estimate, database] = await Promise.all([readStorageEstimate(), readDatabaseUsage("infinite-canvas")]);
     return { usage: estimate?.usage ?? database.bytes, quota: estimate?.quota ?? null, contentBytes: database.bytes, databases: [database] };
 }

@@ -1,6 +1,8 @@
 import { useMemo } from "react";
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { createJSONStorage, persist } from "zustand/middleware";
+import { localForageStorage } from "@/lib/localforage-storage";
+import { isSharedStorageEnabled } from "@/lib/shared-storage";
 import { nanoid } from "nanoid";
 
 import i18n from "@/i18n";
@@ -247,6 +249,8 @@ export const useConfigStore = create<ConfigStore>()(
         }),
         {
             name: CONFIG_STORE_KEY,
+            storage: createJSONStorage(() => isSharedStorageEnabled() ? localForageStorage : localStorage),
+            skipHydration: isSharedStorageEnabled(),
             partialize: (state) => ({ config: state.config, webdav: state.webdav }),
             merge: (persisted, current) => {
                 const persistedState = (persisted || {}) as Partial<ConfigStore>;

@@ -1,11 +1,11 @@
-import localforage from "localforage";
+import { createAppStorage, isSharedStorageEnabled } from "@/lib/shared-storage";
 import { nanoid } from "nanoid";
 
 import { withLocalProxy } from "@/stores/use-config-store";
 
 export type UploadedFile = { url: string; storageKey: string; bytes: number; mimeType: string; width?: number; height?: number; durationMs?: number };
 
-const store = localforage.createInstance({ name: "infinite-canvas", storeName: "media_files" });
+const store = createAppStorage({ name: "infinite-canvas", storeName: "media_files" });
 const objectUrls = new Map<string, string>();
 
 export async function uploadMediaFile(input: string | Blob, prefix = "file"): Promise<UploadedFile> {
@@ -52,6 +52,8 @@ export async function deleteStoredMedia(keys: Iterable<string>) {
 }
 
 export async function cleanupUnusedMedia(usedData: unknown) {
+    // 另一窗口可能仍在使用本窗口尚未看到的文件。
+    if (isSharedStorageEnabled()) return;
     const usedKeys = collectMediaStorageKeys(usedData);
     const unused: string[] = [];
     await store.iterate((_value, key) => {
