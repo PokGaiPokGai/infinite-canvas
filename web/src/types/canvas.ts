@@ -46,8 +46,19 @@ export type CanvasNodeText = {
     content: string;
 };
 
+export type CanvasMediaOutput = {
+    content: string;
+    storageKey?: string;
+    mimeType?: string;
+    bytes?: number;
+    naturalWidth?: number;
+    naturalHeight?: number;
+    durationMs?: number;
+};
+
 export type CanvasNodeMetadata = {
     krita?: KritaNodeMetadata;
+    comfy?: { negativePrompt?: string; denoise?: number; steps?: number; cfg?: number; seed?: number; sampler?: string; scheduler?: string; styleWeight?: number };
     content?: string;
     composerContent?: string;
     prompt?: string;
@@ -75,11 +86,19 @@ export type CanvasNodeMetadata = {
     audioSpeed?: string;
     audioInstructions?: string;
     references?: string[];
+    referenceManifest?: CanvasGenerationInputRecord[];
     naturalWidth?: number;
     naturalHeight?: number;
     freeResize?: boolean;
     images?: CanvasNodeImage[];
     primaryImageId?: string;
+    outputImages?: CanvasNodeImage[];
+    selectedOutputImageId?: string;
+    outputTexts?: CanvasNodeText[];
+    selectedOutputTextId?: string;
+    outputText?: string;
+    outputVideo?: CanvasMediaOutput;
+    outputAudio?: CanvasMediaOutput;
     storageKey?: string;
     mimeType?: string;
     bytes?: number;
@@ -100,10 +119,24 @@ export type CanvasNodeData = {
     metadata?: CanvasNodeMetadata;
 };
 
+export type CanvasInputRole = "reference" | "composition" | "style" | "palette" | "character" | "material" | "pose" | "depth" | "mask";
+
+export type CanvasGenerationInputRecord = {
+    sourceNodeId: string;
+    connectionId?: string;
+    role: CanvasInputRole;
+    instruction?: string;
+    reference?: string;
+};
+
 export type CanvasConnection = {
     id: string;
     fromNodeId: string;
     toNodeId: string;
+    role?: CanvasInputRole;
+    instruction?: string;
+    order?: number;
+    enabled?: boolean;
 };
 
 export type CanvasAssistantReference = {

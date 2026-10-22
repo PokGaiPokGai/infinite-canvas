@@ -1,0 +1,10 @@
+Krita application icon attribution
+
+Asset: krita.png, copied unmodified from the locally installed official Krita 5.3.3 package at share/icons/hicolor/64x64/apps/krita.png.
+Official upstream asset: https://github.com/KDE/krita/blob/master/krita/pics/branding/default/64-apps-krita.png
+Krita license information: https://krita.org/en/about/license/
+Krita trademark policy: https://krita.org/en/posts/2013/krita-trademark-policy/
+
+Krita states that the application as a whole is GPL version 3. The installed PNG carries no separate per-file SPDX notice; the GPL v3 text distributed with Krita is reproduced in krita-GPL-3.0.txt. This icon is a separate third-party asset and is not relicensed under this repository's MIT license.
+
+Krita and its icon are trademarks of Stichting Krita Foundation. The icon identifies the Krita connection in this independent application; its use does not imply Krita Foundation endorsement or official association.

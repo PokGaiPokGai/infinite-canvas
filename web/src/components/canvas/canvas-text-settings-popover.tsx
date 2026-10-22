@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { Settings2 } from "lucide-react";
 import { Button, InputNumber } from "antd";
@@ -8,6 +8,7 @@ import { reasoningEffortLabel, TextSettingsPanel } from "@/components/text-setti
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
 import type { AiConfig, ReasoningEffort } from "@/stores/use-config-store";
+import { useCanvasPopoverAnchor, useCanvasPopoverOutsideClick } from "./use-canvas-popover-anchor";
 
 type CanvasTextSettingsPopoverProps = {
     config: AiConfig;
@@ -24,26 +25,9 @@ export function CanvasTextSettingsPopover({ config, onConfigChange, count, onCou
     const buttonRef = useRef<HTMLSpanElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
     const [open, setOpen] = useState(false);
-    const [buttonRect, setButtonRect] = useState<DOMRect | null>(null);
+    const buttonRect = useCanvasPopoverAnchor(buttonRef, open);
 
-    useEffect(() => {
-        if (!open) return;
-        const syncPosition = () => setButtonRect(buttonRef.current?.getBoundingClientRect() || null);
-        const closeOnOutsidePointer = (event: PointerEvent) => {
-            const target = event.target;
-            if (!(target instanceof Node) || buttonRef.current?.contains(target) || panelRef.current?.contains(target)) return;
-            setOpen(false);
-        };
-        syncPosition();
-        window.addEventListener("resize", syncPosition);
-        window.addEventListener("scroll", syncPosition, true);
-        window.addEventListener("pointerdown", closeOnOutsidePointer, true);
-        return () => {
-            window.removeEventListener("resize", syncPosition);
-            window.removeEventListener("scroll", syncPosition, true);
-            window.removeEventListener("pointerdown", closeOnOutsidePointer, true);
-        };
-    }, [open]);
+    useCanvasPopoverOutsideClick(buttonRef, panelRef, open, () => setOpen(false));
 
     const panel = open && buttonRect ? <TextSettingsPortal buttonRect={buttonRect} panelRef={panelRef} placement={placement} theme={theme} config={config} count={count} onConfigChange={onConfigChange} onCountChange={onCountChange} /> : null;
 

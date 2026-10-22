@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { Settings2 } from "lucide-react";
 import { Button } from "antd";
@@ -7,6 +7,7 @@ import { VideoSettingsPanel, videoModeLabel, videoResolutionLabel, videoSecondsL
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
 import type { AiConfig } from "@/stores/use-config-store";
+import { useCanvasPopoverAnchor, useCanvasPopoverOutsideClick } from "./use-canvas-popover-anchor";
 
 type CanvasVideoSettingsPopoverProps = {
     config: AiConfig;
@@ -20,28 +21,9 @@ export function CanvasVideoSettingsPopover({ config, onConfigChange, buttonClass
     const buttonRef = useRef<HTMLSpanElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
     const [open, setOpen] = useState(false);
-    const [buttonRect, setButtonRect] = useState<DOMRect | null>(null);
+    const buttonRect = useCanvasPopoverAnchor(buttonRef, open);
 
-    useEffect(() => {
-        if (!open) return;
-        const syncPosition = () => setButtonRect(buttonRef.current?.getBoundingClientRect() || null);
-        const closeOnOutsidePointer = (event: PointerEvent) => {
-            const target = event.target;
-            if (!(target instanceof Node)) return;
-            if (buttonRef.current?.contains(target) || panelRef.current?.contains(target)) return;
-            setOpen(false);
-        };
-
-        syncPosition();
-        window.addEventListener("resize", syncPosition);
-        window.addEventListener("scroll", syncPosition, true);
-        window.addEventListener("pointerdown", closeOnOutsidePointer, true);
-        return () => {
-            window.removeEventListener("resize", syncPosition);
-            window.removeEventListener("scroll", syncPosition, true);
-            window.removeEventListener("pointerdown", closeOnOutsidePointer, true);
-        };
-    }, [open]);
+    useCanvasPopoverOutsideClick(buttonRef, panelRef, open, () => setOpen(false));
 
     const panel = open && buttonRect ? <VideoSettingsPortal buttonRect={buttonRect} panelRef={panelRef} placement={placement} theme={theme} config={config} onConfigChange={onConfigChange} /> : null;
 

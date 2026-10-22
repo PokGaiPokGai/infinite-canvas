@@ -8,6 +8,7 @@ import type { CanvasNodeGenerationMode } from "@/components/canvas/canvas-node-p
 import type { CanvasImageAngleParams } from "@/components/canvas/canvas-node-angle-dialog";
 import type { ReferenceImage } from "@/types/image";
 import { CanvasNodeType, type CanvasAssistantSession, type CanvasConnection, type CanvasNodeData, type CanvasNodeMetadata } from "@/types/canvas";
+import { isConnectionOperational } from "@/lib/canvas/canvas-connection-state";
 
 export function imageExtension(dataUrl: string) {
     return dataUrl.match(/^data:image[/]([^;]+)/)?.[1] || dataUrl.match(/image[/]([^;]+)/)?.[1] || "png";
@@ -45,10 +46,15 @@ export async function resolveMetadataReferences(metadata: CanvasNodeMetadata) {
 export async function hydrateCanvasImages(nodes: CanvasNodeData[]) {
     return Promise.all(
         nodes.map(async (node) => {
-            const metadata = node.metadata;
+            const original = node.metadata;
+            const metadata = node.type === CanvasNodeType.Config && original ? {
+                ...original,
+                ...(original.outputVideo?.storageKey ? { outputVideo: { ...original.outputVideo, content: await resolveMediaUrl(original.outputVideo.storageKey, original.outputVideo.content) } } : {}),
+                ...(original.outputAudio?.storageKey ? { outputAudio: { ...original.outputAudio, content: await resolveMediaUrl(original.outputAudio.storageKey, original.outputAudio.content) } } : {}),
+            } : original;
             const content = metadata?.content;
             if ((node.type === CanvasNodeType.Video || node.type === CanvasNodeType.Audio) && metadata?.storageKey) return { ...node, metadata: { ...metadata, content: await resolveMediaUrl(metadata.storageKey, content) } };
-            if ((node.type !== CanvasNodeType.Image && metadata?.krita?.kind !== "source") || !metadata || (!content && !metadata.storageKey)) return node;
+            if ((node.type !== CanvasNodeType.Image && node.type !== CanvasNodeType.Config && metadata?.krita?.kind !== "source" && metadata?.krita?.kind !== "link") || !metadata || (!content && !metadata.storageKey && !metadata.outputImages?.length)) return metadata === original ? node : { ...node, metadata };
             const images = await Promise.all(
                 (metadata.images || []).map(async (image) => {
                     if (!image.content && !image.storageKey) return image;
@@ -56,12 +62,17 @@ export async function hydrateCanvasImages(nodes: CanvasNodeData[]) {
                     return { ...image, content: await resolveImageUrl(image.storageKey, image.content) };
                 }),
             );
+            const outputImages = await Promise.all((metadata.outputImages || []).map(async (image) => {
+                if (!image.content && !image.storageKey) return image;
+                void ensureImagePreview(image.storageKey);
+                return { ...image, content: await resolveImageUrl(image.storageKey, image.content) };
+            }));
             if (metadata.storageKey) {
                 void ensureImagePreview(metadata.storageKey);
-                return { ...node, metadata: { ...metadata, content: await resolveImageUrl(metadata.storageKey, content), images } };
+                return { ...node, metadata: { ...metadata, content: await resolveImageUrl(metadata.storageKey, content), images, outputImages } };
             }
-            if (!content || !content.startsWith("data:image/")) return node;
-            return { ...node, metadata: { ...metadata, ...imageMetadata(await uploadImage(content)) } };
+            if (!content || !content.startsWith("data:image/")) return { ...node, metadata: { ...metadata, images, outputImages } };
+            return { ...node, metadata: { ...metadata, ...imageMetadata(await uploadImage(content)), images, outputImages } };
         }),
     );
 }
@@ -151,7 +162,8 @@ export function isGenerationCanceled(error: unknown) {
 }
 
 export function findRetrySourceNode(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[]) {
-    const queue = connections.filter((connection) => connection.toNodeId === nodeId).map((connection) => connection.fromNodeId);
+    const operational = connections.filter((connection) => isConnectionOperational(connection, nodes.find((node) => node.id === connection.fromNodeId), nodes.find((node) => node.id === connection.toNodeId)));
+    const queue = operational.filter((connection) => connection.toNodeId === nodeId).map((connection) => connection.fromNodeId);
     const visited = new Set<string>();
     while (queue.length) {
         const id = queue.shift()!;
@@ -159,7 +171,7 @@ export function findRetrySourceNode(nodeId: string, nodes: CanvasNodeData[], con
         visited.add(id);
         const node = nodes.find((item) => item.id === id);
         if (node?.type === CanvasNodeType.Config) return node;
-        connections.filter((connection) => connection.toNodeId === id).forEach((connection) => queue.push(connection.fromNodeId));
+        operational.filter((connection) => connection.toNodeId === id).forEach((connection) => queue.push(connection.fromNodeId));
     }
     return null;
 }

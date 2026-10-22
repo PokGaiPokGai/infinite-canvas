@@ -6,6 +6,7 @@ import type { CanvasNodeContext } from "@/types/canvas-plugin";
 import type { KritaGeneration, KritaGenerationRequest, KritaPresetMetadata, KritaSnapshot } from "@/types/krita-link";
 
 export const KRITA_SOURCE = "krita-link:source";
+export const KRITA_LINK = "krita-link:link";
 export const KRITA_PRESET = "krita-link:preset";
 const submitting = new Set<string>();
 const waiting = new Map<string, { jobId: string; controller: AbortController }>();
@@ -80,7 +81,7 @@ function blobDataUrl(blob: Blob) {
     });
 }
 
-async function asPng(dataUrl: string) {
+export async function asPng(dataUrl: string) {
     if (/^data:image\/png;base64,/.test(dataUrl)) return dataUrl;
     const blob = await (await fetch(dataUrl)).blob();
     const bitmap = await createImageBitmap(blob);

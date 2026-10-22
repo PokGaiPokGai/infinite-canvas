@@ -1,15 +1,19 @@
 import type { AiTextMessage } from "@/services/api/image";
+import { resolveModelRequestConfig, resolveModelScript, type AiConfig } from "@/stores/use-config-store";
 import i18n from "@/i18n";
 import { imageReferenceLabel } from "@/lib/image-reference-prompt";
 import type { ReferenceImage } from "@/types/image";
 import type { ReferenceAudio, ReferenceVideo } from "@/types/media";
-import { CanvasNodeType, type CanvasConnection, type CanvasNodeData } from "@/types/canvas";
-import { getGenerationResourceNodes, getGroupResourceNodes } from "@/lib/canvas/canvas-resource-references";
+import { CanvasNodeType, type CanvasConnection, type CanvasInputRole, type CanvasNodeData } from "@/types/canvas";
+import { getGenerationResourceConnections, getGroupResourceNodes } from "@/lib/canvas/canvas-resource-references";
+import { canvasInputRoleLabel, isKritaReadInputNode, isKritaWriteInputNode } from "@/lib/canvas/canvas-input-role";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
+import { getCanvasConfigOutput } from "@/lib/canvas/canvas-config-output";
 
 export type NodeGenerationContext = {
     prompt: string;
     referenceImages: ReferenceImage[];
+    referenceBindings: NodeGenerationReferenceBinding[];
     referenceVideos: ReferenceVideo[];
     referenceAudios: ReferenceAudio[];
     textCount: number;
@@ -18,10 +22,28 @@ export type NodeGenerationContext = {
     audioCount: number;
 };
 
+export function supportsLocalComfyControls(config: AiConfig, model: string) {
+    const baseUrl = resolveModelRequestConfig(config, model).baseUrl.trim();
+    const script = resolveModelScript(config, model);
+    return Boolean(script.includes("params.comfy") && script.includes("params.referenceRoles") && (/\/comfy\/?$/i.test(baseUrl) || /^https?:\/\/(?:127\.0\.0\.1|localhost):8188\/?$/i.test(baseUrl)));
+}
+
+export type NodeGenerationReferenceBinding = {
+    connectionId?: string;
+    sourceNodeId: string;
+    role: CanvasInputRole;
+    instruction?: string;
+    order?: number;
+};
+
 type NodeGenerationResourceInput = {
     nodeId: string;
     type: "text" | "image" | "video" | "audio";
     title: string;
+    connectionId?: string;
+    role?: CanvasConnection["role"];
+    instruction?: string;
+    order?: number;
     text?: string;
     image?: ReferenceImage;
     video?: ReferenceVideo;
@@ -37,23 +59,25 @@ type NodeGenerationGroupInput = {
 
 export type NodeGenerationInput = NodeGenerationResourceInput | NodeGenerationGroupInput;
 
-export function buildNodeGenerationContext(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[], prompt: string): NodeGenerationContext {
+export function buildNodeGenerationContext(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[], prompt: string, imageIndexOffset = 0): NodeGenerationContext {
     const inputs = buildNodeGenerationInputs(nodeId, nodes, connections);
     const sourceNode = nodes.find((node) => node.id === nodeId);
     if (sourceNode?.type === CanvasNodeType.Config && Boolean(sourceNode.metadata?.composerContent?.trim())) {
-        return buildComposerGenerationContext(inputs, prompt);
+        return buildComposerGenerationContext(inputs, prompt, imageIndexOffset);
     }
 
     const resourceInputs = flattenGenerationInputs(inputs);
     let textIndex = 0;
     const upstreamText = resourceInputs.flatMap((input) => (input.text ? [textBlock(generationLabel("text", textIndex++), input.text)] : [])).join("\n\n");
-    const referenceImages = resourceInputs.map((input) => input.image).filter((image): image is ReferenceImage => Boolean(image));
+    const imageInputs = resourceInputs.filter((input) => Boolean(input.image));
+    const referenceImages = imageInputs.map((input) => input.image as ReferenceImage);
     const referenceVideos = resourceInputs.map((input) => input.video).filter((video): video is ReferenceVideo => Boolean(video));
     const referenceAudios = resourceInputs.map((input) => input.audio).filter((audio): audio is ReferenceAudio => Boolean(audio));
 
     return {
-        prompt: upstreamText ? `${prompt}\n\n${upstreamText}` : prompt,
+        prompt: addImageRoleInstructions(upstreamText ? `${prompt}\n\n${upstreamText}` : prompt, imageInputs, imageIndexOffset),
         referenceImages,
+        referenceBindings: imageInputs.map(imageBinding),
         referenceVideos,
         referenceAudios,
         textCount: resourceInputs.filter((input) => input.type === "text").length,
@@ -63,8 +87,9 @@ export function buildNodeGenerationContext(nodeId: string, nodes: CanvasNodeData
     };
 }
 
-function buildComposerGenerationContext(inputs: NodeGenerationInput[], prompt: string): NodeGenerationContext {
-    const inputByNodeId = new Map(inputs.map((input) => [input.nodeId, input]));
+function buildComposerGenerationContext(inputs: NodeGenerationInput[], prompt: string, imageIndexOffset: number): NodeGenerationContext {
+    const inputByNodeId = new Map<string, NodeGenerationInput>();
+    for (const input of inputs) if (!inputByNodeId.has(input.nodeId)) inputByNodeId.set(input.nodeId, input);
     const selectedInputs: NodeGenerationResourceInput[] = [];
     const labelByNodeId = new Map<string, string>();
     const textBlocks: string[] = [];
@@ -94,16 +119,20 @@ function buildComposerGenerationContext(inputs: NodeGenerationInput[], prompt: s
         lastIndex = match.index + match[0].length;
     }
 
+    const connectedRoleImages = flattenGenerationInputs(inputs).filter((input) => input.image && input.role && !labelByNodeId.has(input.nodeId));
+    selectedInputs.push(...connectedRoleImages);
     nextPrompt += prompt.slice(lastIndex);
     if (textBlocks.length) nextPrompt = `${nextPrompt.trim()}\n\n${textBlocks.join("\n\n")}`;
-    const referenceImages = selectedInputs.map((input) => input.image).filter((image): image is ReferenceImage => Boolean(image));
+    const imageInputs = selectedInputs.filter((input) => Boolean(input.image));
+    const referenceImages = imageInputs.map((input) => input.image as ReferenceImage);
     const referenceVideos = selectedInputs.map((input) => input.video).filter((video): video is ReferenceVideo => Boolean(video));
     const referenceAudios = selectedInputs.map((input) => input.audio).filter((audio): audio is ReferenceAudio => Boolean(audio));
 
-    if (!hasToken) {
+    if (!hasToken && !connectedRoleImages.length) {
         return {
             prompt,
             referenceImages: [],
+            referenceBindings: [],
             referenceVideos: [],
             referenceAudios: [],
             textCount: 0,
@@ -114,8 +143,9 @@ function buildComposerGenerationContext(inputs: NodeGenerationInput[], prompt: s
     }
 
     return {
-        prompt: nextPrompt,
+        prompt: addImageRoleInstructions(nextPrompt, imageInputs, imageIndexOffset),
         referenceImages,
+        referenceBindings: imageInputs.map(imageBinding),
         referenceVideos,
         referenceAudios,
         textCount: counts.text,
@@ -126,21 +156,51 @@ function buildComposerGenerationContext(inputs: NodeGenerationInput[], prompt: s
 }
 
 export function buildNodeGenerationInputs(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[]): NodeGenerationInput[] {
-    return getGenerationResourceNodes(nodeId, nodes, connections).flatMap((node): NodeGenerationInput[] => {
+    return getGenerationResourceConnections(nodeId, nodes, connections).flatMap(({ node, connection }): NodeGenerationInput[] => {
+        const resources = node.type === CanvasNodeType.Group ? [] : readNodeGenerationResource(node);
+        // Older Krita connections may have been created before the first snapshot, without a role.
+        // Give only an actual image from a read node the default role; other legacy edges keep their semantics.
+        const role: CanvasInputRole | undefined = connection.role ?? ((isKritaReadInputNode(node) || isKritaWriteInputNode(node)) && resources.some((input) => input.type === "image") ? "reference" : undefined);
+        const edgeInput = { connectionId: connection.id, role, instruction: connection.instruction, order: connection.order };
         if (node.type === CanvasNodeType.Group) {
-            const children = getGroupResourceNodes(node.id, nodes).flatMap(readNodeGenerationResource);
+            const children = getGroupResourceNodes(node.id, nodes).flatMap(readNodeGenerationResource).map((input) => ({ ...input, ...edgeInput }));
             return children.length ? [{ nodeId: node.id, type: "group", title: node.title, children }] : [];
         }
-        return readNodeGenerationResource(node);
+        return resources.map((input) => ({ ...input, ...edgeInput }));
     });
 }
 
 function flattenGenerationInputs(inputs: NodeGenerationInput[]) {
     const resources = inputs.flatMap((input) => (input.type === "group" ? input.children : [input]));
-    return [...new Map(resources.map((input) => [input.nodeId, input])).values()];
+    const byNodeId = new Map<string, NodeGenerationResourceInput>();
+    for (const input of resources) if (!byNodeId.has(input.nodeId)) byNodeId.set(input.nodeId, input);
+    return [...byNodeId.values()];
+}
+
+function addImageRoleInstructions(prompt: string, imageInputs: NodeGenerationResourceInput[], imageIndexOffset: number) {
+    const lines = imageInputs.flatMap((input, index) => {
+        const role = input.role || "reference";
+        const instruction = input.instruction?.trim();
+        if (role === "reference" && !instruction) return [];
+        const label = role === "reference" ? "普通参考" : `${canvasInputRoleLabel(role)}参考${role === "mask" ? "（仅作为描述，不是像素级遮罩）" : ""}`;
+        return [`${imageReferenceLabel(index + imageIndexOffset)}：${label}${instruction ? `；${instruction}` : ""}`];
+    });
+    return lines.length ? `${prompt}\n\n参考图用途（按图片编号对应）：\n${lines.join("\n")}` : prompt;
+}
+
+function imageBinding(input: NodeGenerationResourceInput): NodeGenerationReferenceBinding {
+    return { connectionId: input.connectionId, sourceNodeId: input.nodeId, role: input.role || "reference", instruction: input.instruction?.trim() || undefined, order: input.order };
 }
 
 function readNodeGenerationResource(node: CanvasNodeData): NodeGenerationResourceInput[] {
+    if (node.type === CanvasNodeType.Config) {
+        const output = getCanvasConfigOutput(node);
+        if (!output) return [];
+        if (output.kind === "text") return [{ nodeId: node.id, type: "text", title: node.title, text: output.content }];
+        if (output.kind === "image") return [{ nodeId: node.id, type: "image", title: node.title, image: { id: node.id, name: `${node.title || node.id}.png`, type: output.mimeType || "image/png", dataUrl: output.content, storageKey: output.storageKey } }];
+        if (output.kind === "video") return [{ nodeId: node.id, type: "video", title: node.title, video: { id: node.id, name: `${node.title || node.id}.mp4`, type: output.mimeType || "video/mp4", url: output.content, storageKey: output.storageKey, bytes: output.bytes, width: output.naturalWidth, height: output.naturalHeight, durationMs: output.durationMs } }];
+        return [{ nodeId: node.id, type: "audio", title: node.title, audio: { id: node.id, name: `${node.title || node.id}.mp3`, type: output.mimeType || "audio/mpeg", url: output.content, storageKey: output.storageKey, durationMs: output.durationMs } }];
+    }
     const image = readReferenceImage(node);
     if (image) return [{ nodeId: node.id, type: "image", title: node.title, image }];
     const video = readReferenceVideo(node);

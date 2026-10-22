@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import threading
 import uuid
 from datetime import datetime, timezone
@@ -13,12 +14,15 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from krita import Extension, Krita
-from PyQt5.QtCore import QByteArray, QBuffer, QCoreApplication, QIODevice, QObject, QThread, Qt, QUuid, pyqtSignal, pyqtSlot
+from PyQt5.QtCore import QByteArray, QBuffer, QCoreApplication, QEvent, QIODevice, QObject, QThread, QTimer, Qt, QUuid, pyqtSignal, pyqtSlot
 from PyQt5.QtGui import QColorSpace, QImage
 
 
 PROFILE = "sRGB-elle-V2-srgbtrc.icc"
+GRAY_PROFILE = "Gray-D50-elle-V2-srgbtrc.icc"
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+AUTO_IDLE_DELAY_MS = 2000
+WATCH_KEEPALIVE_MS = 60000
 
 
 class BridgeError(Exception):
@@ -67,8 +71,65 @@ class BridgeService(QObject):
         self.acks = {}
         self._pending = set()
         self._lock = threading.Lock()
+        self._watch_condition = threading.Condition(self._lock)
+        self._revision = 0
         self._closing = False
+        self._idle_timer = QTimer(self)
+        self._idle_timer.setSingleShot(True)
+        self._idle_timer.timeout.connect(self._notify_idle)
+        self._held_inputs = set()
+        QCoreApplication.instance().installEventFilter(self)
         self.requested.connect(self._dispatch, Qt.QueuedConnection)
+
+    def eventFilter(self, watched, event):
+        kind = event.type()
+        if self._closing:
+            return False
+        if kind == QEvent.ApplicationDeactivate:
+            was_active = bool(self._held_inputs)
+            self._held_inputs.clear()
+            if was_active and Krita.instance().activeDocument() is not None:
+                self._idle_timer.start(AUTO_IDLE_DELAY_MS)
+            return False
+        presses = {QEvent.MouseButtonPress: "mouse", QEvent.MouseButtonDblClick: "mouse",
+                   QEvent.TabletPress: "tablet", QEvent.TouchBegin: "touch"}
+        releases = {QEvent.MouseButtonRelease: "mouse", QEvent.TabletRelease: "tablet",
+                    QEvent.TouchEnd: "touch", QEvent.TouchCancel: "touch"}
+        if kind not in presses and kind not in releases and kind not in (QEvent.KeyPress, QEvent.KeyRelease):
+            return False
+        if kind in (QEvent.KeyPress, QEvent.KeyRelease) and event.isAutoRepeat():
+            return False
+        if Krita.instance().activeDocument() is None:
+            self._held_inputs.clear()
+            self._idle_timer.stop()
+            return False
+        if kind in presses or kind == QEvent.KeyPress:
+            self._held_inputs.add(presses.get(kind, ("key", event.key()) if kind == QEvent.KeyPress else None))
+            self._idle_timer.stop()
+        else:
+            key = releases.get(kind, ("key", event.key()) if kind == QEvent.KeyRelease else None)
+            if kind == QEvent.MouseButtonRelease and event.buttons() != Qt.NoButton:
+                self._held_inputs.add("mouse")
+            else:
+                self._held_inputs.discard(key)
+            if not self._held_inputs:
+                self._idle_timer.start(AUTO_IDLE_DELAY_MS)
+        return False
+
+    @pyqtSlot()
+    def _notify_idle(self):
+        with self._watch_condition:
+            if not self._closing and not self._held_inputs:
+                self._revision += 1
+                self._watch_condition.notify_all()
+
+    def watch(self, after):
+        with self._watch_condition:
+            self._watch_condition.wait_for(lambda: self._closing or self._revision != after,
+                                           WATCH_KEEPALIVE_MS / 1000)
+            if self._closing:
+                raise BridgeError(503, "Krita 正在关闭")
+            return {"sessionId": self.session_id, "revision": self._revision, "changed": self._revision != after}
 
     def call(self, action, payload):
         """Called only by HTTP workers; completion is signalled by the GUI thread."""
@@ -99,11 +160,14 @@ class BridgeService(QObject):
             job.done.set()
 
     def close(self):
-        with self._lock:
+        QCoreApplication.instance().removeEventFilter(self)
+        self._idle_timer.stop()
+        with self._watch_condition:
             self._closing = True
             for job in self._pending:
                 job.error = BridgeError(503, "Krita 正在关闭")
                 job.done.set()
+            self._watch_condition.notify_all()
 
     def execute(self, action, payload):
         """GUI-thread entry point, also usable from an explicit self-test script."""
@@ -113,6 +177,8 @@ class BridgeService(QObject):
             return self._status()
         if action == "snapshot":
             return self._snapshot(payload)
+        if action == "layer-backup":
+            return self._layer_backup(payload)
         if action == "apply":
             return self._apply(payload)
         raise BridgeError(404, "接口不存在")
@@ -135,22 +201,30 @@ class BridgeService(QObject):
         documents = []
         for document_id, doc in self._live_documents().items():
             layers = []
-
-            def visit(parent):
-                for node in parent.childNodes():
-                    layers.append({"id": node.uniqueId().toString(QUuid.WithoutBraces), "name": node.name(), "type": node.type()})
-                    visit(node)
-
-            visit(doc.rootNode())
             model, depth, profile = _color(doc)
+
+            def visit(parent, ancestor_locked=False):
+                for node in reversed(parent.childNodes()):
+                    effective_locked = ancestor_locked or node.locked()
+                    layers.append({"id": node.uniqueId().toString(QUuid.WithoutBraces), "name": node.name(), "type": node.type(),
+                                   "locked": effective_locked, "alphaLocked": node.alphaLocked(), "animated": node.animated(),
+                                   "colorCompatible": _color(node) == (model, depth, profile)})
+                    visit(node, effective_locked)
+
+            visit(doc.rootNode(), doc.rootNode().locked())
             documents.append({"id": document_id, "name": _name(doc), "width": doc.width(), "height": doc.height(),
                               "colorModel": model, "colorDepth": depth, "colorProfile": profile, "layers": layers})
-        return {"version": 1, "sessionId": self.session_id, "documents": documents}
+        with self._lock:
+            revision = self._revision
+        return {"version": 1, "sessionId": self.session_id, "activityRevision": revision, "documents": documents}
 
     def _snapshot(self, payload):
         document_id = _uuid(payload.get("documentId"), "documentId")
+        expected_pixel_hash = payload.get("expectedPixelSha256")
+        if expected_pixel_hash is not None and (not isinstance(expected_pixel_hash, str) or len(expected_pixel_hash) != 64 or
+                                                any(char not in "0123456789abcdef" for char in expected_pixel_hash)):
+            raise BridgeError(400, "expectedPixelSha256 无效")
         doc = self._document(document_id)
-        _require_color(doc)
         doc.waitForDone()
         width, height = doc.width(), doc.height()
         layer_id = payload.get("layerId")
@@ -163,13 +237,41 @@ class BridgeService(QObject):
                 raise BridgeError(409, "原图层已不可用，请重新读取")
             if _color(node) != _color(doc):
                 raise BridgeError(422, "原图层的色彩空间暂不支持")
-            pixels = node.projectionPixelData(0, 0, width, height)
+            pixels = bytes(node.projectionPixelData(0, 0, width, height))
+            if _color(doc) == ("GRAYA", "U8", GRAY_PROFILE):
+                if len(pixels) != width * height * 2:
+                    raise BridgeError(422, "快照不是有效的灰度图层像素数据")
+                # Krita returns Gray, Alpha. This approximates sRGB using the shared tone curve,
+                # without exact Gray-D50 to sRGB white-point conversion.
+                gray, alpha = pixels[::2], pixels[1::2]
+                rgba = bytearray(width * height * 4)
+                rgba[0::4] = rgba[1::4] = rgba[2::4] = gray
+                rgba[3::4] = alpha
+                image = QImage(bytes(rgba), width, height, width * 4, QImage.Format_RGBA8888).copy()
+            elif _color(doc) == ("RGBA", "U8", PROFILE):
+                if len(pixels) != width * height * 4:
+                    raise BridgeError(422, "快照不是有效的 RGBA/U8 图层像素数据")
+                image = QImage(pixels, width, height, width * 4, QImage.Format_ARGB32).copy()
+            else:
+                raise BridgeError(422, "当前图层色彩空间暂不支持读取")
         else:
-            pixels = doc.pixelData(0, 0, width, height)
-        if len(pixels) != width * height * 4:
-            raise BridgeError(422, "快照不是有效的 RGBA/U8 像素数据")
-        image = QImage(pixels.data(), width, height, width * 4, QImage.Format_ARGB32).copy()
+            image = doc.projection(0, 0, width, height)
+        if image.isNull() or image.width() != width or image.height() != height:
+            raise BridgeError(422, "无法读取完整尺寸的 Krita 画面")
+        if image.colorSpace().isValid():
+            image.convertToColorSpace(QColorSpace(QColorSpace.SRgb))
+        image = image.convertToFormat(QImage.Format_ARGB32)
         image.setColorSpace(QColorSpace(QColorSpace.SRgb))
+        pixel_digest = hashlib.sha256()
+        pixel_digest.update(width.to_bytes(8, "big"))
+        pixel_digest.update(height.to_bytes(8, "big"))
+        bits = image.constBits()
+        bits.setsize(image.byteCount())
+        pixel_digest.update(bytes(bits))
+        pixel_hash = pixel_digest.hexdigest()
+        if pixel_hash == expected_pixel_hash:
+            return {"unchanged": True, "sessionId": self.session_id, "documentId": document_id,
+                    "layerId": layer_id, "pixelSha256": pixel_hash}
         png = QByteArray()
         buffer = QBuffer(png)
         if not buffer.open(QIODevice.WriteOnly) or not image.save(buffer, "PNG"):
@@ -181,11 +283,58 @@ class BridgeService(QObject):
                                        "color": _color(doc), "layerId": layer_id}
         result = {"id": snapshot_id, "sessionId": self.session_id, "documentId": document_id, "documentName": _name(doc),
                   "width": width, "height": height, "colorModel": "RGBA", "colorDepth": "U8", "colorProfile": PROFILE,
-                  "sha256": hashlib.sha256(image_bytes).hexdigest(), "createdAt": datetime.now(timezone.utc).isoformat(),
+                  "sha256": hashlib.sha256(image_bytes).hexdigest(), "pixelSha256": pixel_hash,
+                  "createdAt": datetime.now(timezone.utc).isoformat(),
                   "imageBase64": base64.b64encode(image_bytes).decode("ascii")}
         if layer_id:
             result["layerId"] = layer_id
         return result
+
+    def _bound_document(self, snapshot_id):
+        snapshot = self.snapshots.get(snapshot_id)
+        if snapshot is None:
+            raise BridgeError(409, "快照不属于本次 Krita 会话，请重新读取")
+        doc = self._document(snapshot["documentId"])
+        doc.waitForDone()
+        if self._document(snapshot["documentId"]) != snapshot["document"] or (doc.width(), doc.height()) != (snapshot["width"], snapshot["height"]) or _color(doc) != snapshot["color"]:
+            raise BridgeError(409, "原文档的尺寸或色彩空间已改变，请重新读取")
+        _require_color(doc)
+        return snapshot, doc
+
+    def _replaceable_layer(self, doc, layer_id):
+        node = doc.nodeByUniqueID(QUuid(layer_id))
+        if node is None:
+            raise BridgeError(409, "目标图层已不可用，请重新选择")
+        if node.type() != "paintlayer" or node.alphaLocked() or node.animated() or _color(node) != _color(doc):
+            raise BridgeError(422, "只能覆盖未锁定、非动画且色彩空间一致的普通绘画图层")
+        current = node
+        while current is not None:
+            if current.locked():
+                raise BridgeError(422, "目标图层或其父级已锁定，未进行覆盖")
+            current = current.parentNode()
+        return node
+
+    def _layer_backup(self, payload):
+        snapshot_id = _uuid(payload.get("snapshotId"), "snapshotId")
+        layer_id = _uuid(payload.get("layerId"), "layerId")
+        snapshot, doc = self._bound_document(snapshot_id)
+        node = self._replaceable_layer(doc, layer_id)
+        width, height = snapshot["width"], snapshot["height"]
+        pixels = node.pixelData(0, 0, width, height)
+        raw = bytes(pixels)
+        if len(raw) != width * height * 4:
+            raise BridgeError(422, "目标图层像素无法备份，未进行覆盖")
+        image = QImage(pixels.data(), width, height, width * 4, QImage.Format_ARGB32).copy()
+        image.setColorSpace(QColorSpace(QColorSpace.SRgb))
+        png = QByteArray()
+        buffer = QBuffer(png)
+        if not buffer.open(QIODevice.WriteOnly) or not image.save(buffer, "PNG"):
+            raise BridgeError(500, "目标图层备份失败，未进行覆盖")
+        image_bytes = bytes(png)
+        buffer.close()
+        return {"documentId": snapshot["documentId"], "layerId": layer_id, "width": width, "height": height,
+                "imageBase64": base64.b64encode(image_bytes).decode("ascii"),
+                "sha256": hashlib.sha256(image_bytes).hexdigest(), "pixelSha256": hashlib.sha256(raw).hexdigest()}
 
     def _apply(self, payload):
         command_id = _uuid(payload.get("commandId"), "commandId")
@@ -196,19 +345,29 @@ class BridgeService(QObject):
         fit_to_canvas = payload.get("fitToCanvas", False)
         if type(fit_to_canvas) is not bool:
             raise BridgeError(400, "fitToCanvas 必须为布尔值")
-        signature = (snapshot_id, expected_hash, fit_to_canvas)
+        insert_above_layer_id = payload.get("insertAboveLayerId")
+        if insert_above_layer_id is not None:
+            insert_above_layer_id = _uuid(insert_above_layer_id, "insertAboveLayerId")
+        write_mode = payload.get("writeMode", "insert")
+        if write_mode not in ("insert", "replace"):
+            raise BridgeError(400, "写回方式无效")
+        replace_layer_id = payload.get("replaceLayerId")
+        if replace_layer_id is not None:
+            replace_layer_id = _uuid(replace_layer_id, "replaceLayerId")
+        expected_layer_hash = payload.get("expectedLayerSha256")
+        if write_mode == "insert" and (replace_layer_id is not None or expected_layer_hash is not None):
+            raise BridgeError(400, "新建图层不能同时指定覆盖目标")
+        if write_mode == "replace" and (insert_above_layer_id is not None or replace_layer_id is None or
+                                         not isinstance(expected_layer_hash, str) or len(expected_layer_hash) != 64 or
+                                         any(char not in "0123456789abcdef" for char in expected_layer_hash)):
+            raise BridgeError(400, "覆盖图层必须指定目标及备份时的像素摘要")
+        signature = (snapshot_id, expected_hash, fit_to_canvas, write_mode, insert_above_layer_id, replace_layer_id, expected_layer_hash)
         if command_id in self.acks:
             saved = self.acks[command_id]
             if saved["signature"] != signature:
                 raise BridgeError(409, "该 commandId 的快照、图片或缩放选项已改变，请使用新的命令编号")
             return saved["ack"]
-        snapshot = self.snapshots.get(snapshot_id)
-        if snapshot is None:
-            raise BridgeError(409, "快照不属于本次 Krita 会话，请重新读取")
-        doc = self._document(snapshot["documentId"])
-        if doc != snapshot["document"] or (doc.width(), doc.height()) != (snapshot["width"], snapshot["height"]) or _color(doc) != snapshot["color"]:
-            raise BridgeError(409, "原文档的尺寸或色彩空间已改变，请重新读取")
-        _require_color(doc)
+        snapshot, doc = self._bound_document(snapshot_id)
         encoded = payload.get("imageBase64")
         if not isinstance(encoded, str):
             raise BridgeError(400, "缺少 PNG 的 imageBase64")
@@ -239,17 +398,47 @@ class BridgeService(QObject):
         layer_name = payload.get("layerName", "无限画布结果")
         if not isinstance(layer_name, str) or not layer_name.strip():
             raise BridgeError(400, "图层名称无效")
-        node = doc.createNode(layer_name, "paintlayer")
-        if node is None or not node.setPixelData(QByteArray(pixels), 0, 0, width, height):
-            raise BridgeError(500, "无法准备新绘画图层")
-        root = doc.rootNode()
-        children = root.childNodes()
-        ack = {"commandId": command_id, "layerId": node.uniqueId().toString(QUuid.WithoutBraces), "documentId": snapshot["documentId"]}
-        if not root.addChildNode(node, children[-1] if children else None):
-            raise BridgeError(500, "无法插入新绘画图层")
+        if write_mode == "replace":
+            node = self._replaceable_layer(doc, replace_layer_id)
+            original_pixels = bytes(node.pixelData(0, 0, width, height))
+            if not hmac.compare_digest(hashlib.sha256(original_pixels).hexdigest(), expected_layer_hash):
+                raise BridgeError(409, "目标图层在备份后发生变化，未进行覆盖；请重新提交一次新写回")
+            if not node.setPixelData(QByteArray(pixels), 0, 0, width, height):
+                raise BridgeError(500, "目标图层覆盖失败")
+            written_hash = hashlib.sha256(bytes(node.pixelData(0, 0, width, height))).digest()
+            if not hmac.compare_digest(written_hash, hashlib.sha256(pixels).digest()):
+                restored = node.setPixelData(QByteArray(original_pixels), 0, 0, width, height)
+                if restored:
+                    restored_hash = hashlib.sha256(bytes(node.pixelData(0, 0, width, height))).digest()
+                    restored = hmac.compare_digest(restored_hash, hashlib.sha256(original_pixels).digest())
+                doc.refreshProjection()
+                if restored:
+                    raise BridgeError(500, "目标图层写入后校验失败，已恢复备份前像素；请重新检查图层")
+                doc.setModified(True)
+                raise BridgeError(500, "目标图层写入后校验失败且无法自动恢复，请保留本机备份并检查图层")
+        else:
+            root = doc.rootNode()
+            parent, above = root, None
+            if insert_above_layer_id:
+                above = doc.nodeByUniqueID(QUuid(insert_above_layer_id))
+                parent = above.parentNode() if above is not None else None
+                if parent is None or above not in parent.childNodes():
+                    raise BridgeError(409, "目标图层已不可用，请重新选择写入位置")
+            else:
+                children = root.childNodes()
+                above = children[-1] if children else None
+            node = doc.createNode(layer_name, "paintlayer")
+            if node is None or not node.setPixelData(QByteArray(pixels), 0, 0, width, height):
+                raise BridgeError(500, "无法准备新绘画图层")
+            if not parent.addChildNode(node, above):
+                raise BridgeError(500, "无法在目标图层上方插入新绘画图层")
+        doc.setModified(True)
+        ack = {"commandId": command_id, "layerId": node.uniqueId().toString(QUuid.WithoutBraces),
+               "documentId": snapshot["documentId"], "layerPixelSha256": hashlib.sha256(pixels).hexdigest()}
         # Record before refreshing, so a disconnected caller can safely repeat the command.
         self.acks[command_id] = {"signature": signature, "ack": ack}
         doc.refreshProjection()
+        self._idle_timer.start(AUTO_IDLE_DELAY_MS)
         return ack
 
 
@@ -280,7 +469,14 @@ def make_handler(service, token, port):
                 tokens = self.headers.get_all("X-Infinite-Canvas-Krita", [])
                 if len(tokens) != 1 or not hmac.compare_digest(tokens[0].encode("utf-8"), token.encode("utf-8")):
                     raise BridgeError(403, "Krita 连接验证失败")
-                routes = {("GET", "/status"): "status", ("POST", "/snapshot"): "snapshot", ("POST", "/apply"): "apply"}
+                if self.command == "GET" and self.path.startswith("/watch"):
+                    match = re.fullmatch(r"/watch\?after=(0|[1-9][0-9]*)", self.path)
+                    if match is None or int(match.group(1)) > 9007199254740991:
+                        raise BridgeError(400, "watch 版本号无效")
+                    self._reply(200, service.watch(int(match.group(1))))
+                    return
+                routes = {("GET", "/status"): "status", ("POST", "/snapshot"): "snapshot",
+                          ("POST", "/layer-backup"): "layer-backup", ("POST", "/apply"): "apply"}
                 action = routes.get((self.command, self.path))
                 if action is None:
                     raise BridgeError(404, "接口不存在")

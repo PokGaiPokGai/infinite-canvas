@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
 import { ChevronRight, Copy, Download, Group, Image as ImageIcon, Music2, Puzzle, RefreshCw, Star, Trash2, Video } from "lucide-react";
 
@@ -7,6 +7,8 @@ import { formatBytes } from "@/lib/image-utils";
 import { pickImageSource } from "@/lib/image-thumbnail";
 import { previewUrlFor, subscribeImagePreviews, getImagePreviewRevision } from "@/services/image-storage";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
+import { hasCanvasNodeHandle } from "@/lib/canvas/canvas-connection-state";
+import { KRITA_LINK } from "@/lib/canvas/krita-link";
 import { buildNodeContext } from "@/lib/canvas/plugin-node-context";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { CanvasResourceMentionTextarea } from "./canvas-resource-mention-textarea";
@@ -17,6 +19,7 @@ import { useTranslation } from "react-i18next";
 
 type ResizeCorner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
 const selectionBlue = "#2f80ff";
+const CONFIG_NODE_MIN_WIDTH = 300;
 
 type CanvasNodeProps = {
     data: CanvasNodeData;
@@ -148,6 +151,9 @@ export const CanvasNode = React.memo(function CanvasNode({
     const imageBorderColor = isActive ? selectionBlue : isRelated ? theme.node.muted : "transparent";
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const titleInputRef = useRef<HTMLInputElement>(null);
+    const configContentContainerRef = useRef<HTMLDivElement>(null);
+    const configSizeRef = useRef({ width: data.width, height: data.height });
+    configSizeRef.current = { width: data.width, height: data.height };
     const resizeRef = useRef({
         isResizing: false,
         corner: "bottom-right" as ResizeCorner,
@@ -160,6 +166,27 @@ export const CanvasNode = React.memo(function CanvasNode({
         keepRatio: false,
         ratio: 1,
     });
+
+    useEffect(() => {
+        if (data.type === CanvasNodeType.Config && data.width < CONFIG_NODE_MIN_WIDTH) {
+            onResize(data.id, CONFIG_NODE_MIN_WIDTH, data.height);
+        }
+    }, [data.height, data.id, data.type, data.width, onResize]);
+
+    useLayoutEffect(() => {
+        if (data.type !== CanvasNodeType.Config) return;
+        const content = configContentContainerRef.current?.firstElementChild as HTMLElement | null;
+        if (!content) return;
+        const fitHeight = () => {
+            const height = content.offsetHeight + 4; // Two-pixel node border on each edge.
+            const { width, height: currentHeight } = configSizeRef.current;
+            if (height !== currentHeight) onResize(data.id, width, height);
+        };
+        fitHeight();
+        const observer = new ResizeObserver(fitHeight);
+        observer.observe(content);
+        return () => observer.disconnect();
+    }, [data.id, data.type, onResize]);
 
     useEffect(() => {
         setTitleDraft(data.title || "");
@@ -226,13 +253,22 @@ export const CanvasNode = React.memo(function CanvasNode({
 
             const dx = (event.clientX - resizeRef.current.startX) / scale;
             const dy = (event.clientY - resizeRef.current.startY) / scale;
-            const minWidth = 220;
+            const minWidth = data.type === CanvasNodeType.Config ? CONFIG_NODE_MIN_WIDTH : 220;
             const minHeight = 160;
             const startRight = resizeRef.current.startLeft + resizeRef.current.startWidth;
             const startBottom = resizeRef.current.startTop + resizeRef.current.startHeight;
             const fromLeft = resizeRef.current.corner.includes("left");
             const fromTop = resizeRef.current.corner.includes("top");
             const rawWidth = Math.max(minWidth, resizeRef.current.startWidth + (fromLeft ? -dx : dx));
+            if (data.type === CanvasNodeType.Config) {
+                if (rawWidth === configSizeRef.current.width) return;
+                const height = (configContentContainerRef.current?.firstElementChild as HTMLElement | null)?.offsetHeight;
+                onResize(data.id, rawWidth, height ? height + 4 : resizeRef.current.startHeight, {
+                    x: fromLeft ? startRight - rawWidth : resizeRef.current.startLeft,
+                    y: resizeRef.current.startTop,
+                });
+                return;
+            }
             const rawHeight = Math.max(minHeight, resizeRef.current.startHeight + (fromTop ? -dy : dy));
             let width = rawWidth;
             let height = rawHeight;
@@ -258,7 +294,7 @@ export const CanvasNode = React.memo(function CanvasNode({
                 y: fromTop ? startBottom - height : resizeRef.current.startTop,
             });
         },
-        [data.id, onResize, scale],
+        [data.id, data.type, onResize, scale],
     );
 
     const handleResizeUp = useCallback(() => {
@@ -282,7 +318,7 @@ export const CanvasNode = React.memo(function CanvasNode({
             startWidth: data.width,
             startHeight: data.height,
             keepRatio: (data.type === CanvasNodeType.Image && !data.metadata?.freeResize) || data.type === CanvasNodeType.Video || Boolean(definition?.keepAspectRatio?.(data)),
-            ratio: (data.metadata?.naturalWidth || data.width) / (data.metadata?.naturalHeight || data.height || 1),
+            ratio: data.type === KRITA_LINK ? data.width / (data.height || 1) : (data.metadata?.naturalWidth || data.width) / (data.metadata?.naturalHeight || data.height || 1),
         };
         window.addEventListener("mousemove", handleResizeMove);
         window.addEventListener("mouseup", handleResizeUp);
@@ -322,7 +358,7 @@ export const CanvasNode = React.memo(function CanvasNode({
                 else onContextMenu(event, data.id);
             }}
         >
-            {!referenceSelectionState && (isSelected || hovered || isEditingTitle) && (
+            {!referenceSelectionState && data.type !== KRITA_LINK && (isSelected || hovered || isEditingTitle) && (
                 <div className="absolute left-3 top-[-28px] z-[65] max-w-[calc(100%-24px)]" onMouseDown={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
                     {isEditingTitle ? (
                         <input
@@ -359,7 +395,8 @@ export const CanvasNode = React.memo(function CanvasNode({
             )}
 
             <div
-                className="relative h-full w-full overflow-visible rounded-3xl border-2"
+                className={`relative h-full w-full overflow-visible rounded-3xl border-2 ${data.type === KRITA_LINK ? "krita-link-aurora" : ""}`}
+                data-selected={data.type === KRITA_LINK ? isSelected : undefined}
                 style={{
                     background: isGroup ? "transparent" : hasImageContent || hasVideoContent || transparentBg ? "transparent" : theme.node.fill,
                     borderColor: isGroup ? (isGroupDropTarget || isActive ? selectionBlue : theme.node.stroke) : hasImageContent ? imageBorderColor : isActive ? selectionBlue : isRelated ? theme.node.muted : transparentBg ? "transparent" : theme.node.stroke,
@@ -393,7 +430,8 @@ export const CanvasNode = React.memo(function CanvasNode({
                 }}
             >
                 <div
-                    className={`relative flex h-full w-full items-center justify-center rounded-[inherit] ${isBatchRoot ? "overflow-visible" : "overflow-hidden"}`}
+                    ref={configContentContainerRef}
+                    className={`relative flex h-full w-full justify-center rounded-[inherit] ${data.type === CanvasNodeType.Config ? "items-start" : "items-center"} ${isBatchRoot ? "overflow-visible" : "overflow-hidden"}`}
                     style={
                         {
                             background: isGroup ? "transparent" : hasImageContent || hasVideoContent || transparentBg ? "transparent" : theme.node.fill,
@@ -429,7 +467,7 @@ export const CanvasNode = React.memo(function CanvasNode({
 
                 {showImageInfo && hasImageContent ? <ImageInfoBar node={data} /> : null}
 
-                {!isGroup && !hasImageContent && !hasVideoContent && !hasAudioContent ? <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12" style={{ background: `linear-gradient(to top, ${theme.canvas.background}66, transparent)` }} /> : null}
+                {!isGroup && data.type !== KRITA_LINK && !hasImageContent && !hasVideoContent && !hasAudioContent ? <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12" style={{ background: `linear-gradient(to top, ${theme.canvas.background}66, transparent)` }} /> : null}
 
                 {referenceSelectionState && (referenceSelectionState !== "available" || hovered) ? (
                     <div className="pointer-events-none absolute inset-0 z-[60] grid place-items-center rounded-[inherit]" style={{ background: `color-mix(in srgb, ${theme.canvas.background} ${referenceSelectionState === "target" ? 78 : referenceSelectionState === "disabled" ? 60 : 34}%, transparent)`, boxShadow: referenceSelectionState === "available" ? `inset 0 0 0 2px ${selectionBlue}` : undefined }}>
@@ -437,17 +475,23 @@ export const CanvasNode = React.memo(function CanvasNode({
                     </div>
                 ) : null}
 
-                {!referenceSelectionState ? <ResizeHandle corner="top-left" onMouseDown={handleResizeMouseDown} /> : null}
-                {!referenceSelectionState ? <ResizeHandle corner="top-right" onMouseDown={handleResizeMouseDown} /> : null}
-                {!referenceSelectionState ? <ResizeHandle corner="bottom-left" onMouseDown={handleResizeMouseDown} /> : null}
-                {!referenceSelectionState ? <ResizeHandle corner="bottom-right" onMouseDown={handleResizeMouseDown} /> : null}
+                {!referenceSelectionState ? <ResizeHandle corner="top-left" horizontalOnly={data.type === CanvasNodeType.Config} onMouseDown={handleResizeMouseDown} /> : null}
+                {!referenceSelectionState ? <ResizeHandle corner="top-right" horizontalOnly={data.type === CanvasNodeType.Config} onMouseDown={handleResizeMouseDown} /> : null}
+                {!referenceSelectionState ? <ResizeHandle corner="bottom-left" horizontalOnly={data.type === CanvasNodeType.Config} onMouseDown={handleResizeMouseDown} /> : null}
+                {!referenceSelectionState ? <ResizeHandle corner="bottom-right" horizontalOnly={data.type === CanvasNodeType.Config} onMouseDown={handleResizeMouseDown} /> : null}
             </div>
 
-            {!referenceSelectionState && !isGroup ? <ConnectionHandleDot side="left" visible={hovered || isSelected || isConnecting} onMouseDown={(event) => onConnectStart(event, data.id, "target")} /> : null}
-            {!referenceSelectionState && (definition?.hasSourceHandle ?? true) && data.type !== CanvasNodeType.Config ? <ConnectionHandleDot side="right" visible={hovered || isSelected || isConnecting} onMouseDown={(event) => onConnectStart(event, data.id, "source")} /> : null}
+            {!referenceSelectionState && hasCanvasNodeHandle(data, "target") ? <ConnectionHandleDot side="left" visible={hovered || isSelected || isConnecting} onMouseDown={(event) => onConnectStart(event, data.id, "target")} /> : null}
+            {!referenceSelectionState && hasCanvasNodeHandle(data, "source") ? <ConnectionHandleDot side="right" visible={hovered || isSelected || isConnecting} onMouseDown={(event) => onConnectStart(event, data.id, "source")} /> : null}
 
-            {/* Counter-scale the panel so its on-screen size stays constant while the canvas zooms. */}
-            {showPanel && !isGroup && renderPanel ? (
+            {data.type === KRITA_LINK && showPanel && renderPanel ? (
+                <div className="absolute left-full top-0 z-[70] pl-3" style={{ transform: `scale(${1 / scale})`, transformOrigin: "top left" }} data-node-panel={data.id}>
+                    <div data-canvas-no-zoom className="w-80 max-w-[calc(100vw-24px)] overflow-hidden rounded-xl border" style={{ maxHeight: "calc(100vh - 24px)", background: theme.node.panel, borderColor: theme.node.stroke }}>
+                        {renderPanel(data)}
+                    </div>
+                </div>
+            ) : showPanel && !isGroup && renderPanel ? (
+                /* Counter-scale the panel so its on-screen size stays constant while the canvas zooms. */
                 <div className="absolute left-1/2 top-full z-[70] w-[600px] pt-4" style={{ transform: `translateX(-50%) scale(${1 / scale})`, transformOrigin: "top center" }} data-node-panel={data.id}>
                     {renderPanel(data)}
                 </div>
@@ -460,8 +504,8 @@ function NodeContent(props: NodeContentRendererProps) {
     if (props.node.type === CanvasNodeType.Config && props.renderNodeContent) return props.renderNodeContent(props.node);
     if (props.isBatchRoot && props.node.type === CanvasNodeType.Image) return <ImageNodeContent {...props} />;
     if (props.node.type === CanvasNodeType.Text && props.node.metadata?.texts?.length && (props.node.metadata.status !== "error" || props.node.metadata.texts.some((text) => text.content))) return <TextContent {...props} />;
-    if (props.node.metadata?.status === "loading") return <LoadingContent theme={props.theme} />;
-    if (props.node.metadata?.status === "error") return <ErrorContent node={props.node} theme={props.theme} onRetry={props.onRetry} />;
+    if (props.node.type !== KRITA_LINK && props.node.metadata?.status === "loading") return <LoadingContent theme={props.theme} />;
+    if (props.node.type !== KRITA_LINK && props.node.metadata?.status === "error") return <ErrorContent node={props.node} theme={props.theme} onRetry={props.onRetry} />;
 
     const Renderer = nodeContentRenderers[props.node.type as CanvasNodeType];
     if (Renderer) return <Renderer {...props} />;
@@ -970,15 +1014,15 @@ function BatchFrame({ batchCount, batchExpanded, children }: { batchCount: numbe
         </div>
     );
 }
-function ResizeHandle({ corner, onMouseDown }: { corner: ResizeCorner; onMouseDown: (event: React.MouseEvent, corner: ResizeCorner) => void }) {
+function ResizeHandle({ corner, horizontalOnly = false, onMouseDown }: { corner: ResizeCorner; horizontalOnly?: boolean; onMouseDown: (event: React.MouseEvent, corner: ResizeCorner) => void }) {
     const positionClass = {
-        "top-left": "-left-[14px] -top-[14px] cursor-nwse-resize",
-        "top-right": "-right-[14px] -top-[14px] cursor-nesw-resize",
-        "bottom-left": "-bottom-[14px] -left-[14px] cursor-nesw-resize",
-        "bottom-right": "-bottom-[14px] -right-[14px] cursor-nwse-resize",
+        "top-left": "-left-[14px] -top-[14px]",
+        "top-right": "-right-[14px] -top-[14px]",
+        "bottom-left": "-bottom-[14px] -left-[14px]",
+        "bottom-right": "-bottom-[14px] -right-[14px]",
     }[corner];
 
-    return <div className={`absolute z-50 size-7 ${positionClass}`} onMouseDown={(event) => onMouseDown(event, corner)} />;
+    return <div className={`absolute z-50 size-7 ${positionClass} ${horizontalOnly ? "cursor-ew-resize" : corner === "top-left" || corner === "bottom-right" ? "cursor-nwse-resize" : "cursor-nesw-resize"}`} onMouseDown={(event) => onMouseDown(event, corner)} />;
 }
 
 function ConnectionHandleDot({ side, visible, onMouseDown }: { side: "left" | "right"; visible: boolean; onMouseDown: (event: React.MouseEvent) => void }) {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { Settings2 } from "lucide-react";
 import { Button } from "antd";
@@ -8,6 +8,7 @@ import { ImageSettingsPanel, imageQualityLabel, imageSizeLabel } from "@/compone
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
 import type { AiConfig } from "@/stores/use-config-store";
+import { useCanvasPopoverAnchor, useCanvasPopoverOutsideClick } from "./use-canvas-popover-anchor";
 
 type CanvasImageSettingsPopoverProps = {
     config: AiConfig;
@@ -26,7 +27,7 @@ export function CanvasImageSettingsPopover({ config, onConfigChange, onOpenChang
     const buttonRef = useRef<HTMLSpanElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
     const [open, setOpen] = useState(false);
-    const [buttonRect, setButtonRect] = useState<DOMRect | null>(null);
+    const buttonRect = useCanvasPopoverAnchor(buttonRef, open);
     const quality = config.quality || "auto";
     const count = Math.max(1, Math.min(15, Math.floor(Math.abs(Number(config.count)) || 1)));
     const activeSize = config.size || "auto";
@@ -35,28 +36,11 @@ export function CanvasImageSettingsPopover({ config, onConfigChange, onOpenChang
         onOpenChange?.(nextOpen);
     };
 
-    useEffect(() => {
-        if (!open) return;
-        const syncPosition = () => setButtonRect(buttonRef.current?.getBoundingClientRect() || null);
-        const closeOnOutsidePointer = (event: PointerEvent) => {
-            const target = event.target;
-            if (!(target instanceof Node)) return;
-            if (buttonRef.current?.contains(target) || panelRef.current?.contains(target)) return;
-            if (document.activeElement instanceof HTMLElement && panelRef.current?.contains(document.activeElement)) document.activeElement.blur();
-            setOpen(false);
-            onOpenChange?.(false);
-        };
-
-        syncPosition();
-        window.addEventListener("resize", syncPosition);
-        window.addEventListener("scroll", syncPosition, true);
-        window.addEventListener("pointerdown", closeOnOutsidePointer, true);
-        return () => {
-            window.removeEventListener("resize", syncPosition);
-            window.removeEventListener("scroll", syncPosition, true);
-            window.removeEventListener("pointerdown", closeOnOutsidePointer, true);
-        };
-    }, [onOpenChange, open]);
+    useCanvasPopoverOutsideClick(buttonRef, panelRef, open, () => {
+        if (document.activeElement instanceof HTMLElement && panelRef.current?.contains(document.activeElement)) document.activeElement.blur();
+        setOpen(false);
+        onOpenChange?.(false);
+    });
 
     const panel = open && buttonRect ? <ImageSettingsPortal buttonRect={buttonRect} panelRef={panelRef} placement={placement} theme={theme} config={config} onConfigChange={onConfigChange} /> : null;
 

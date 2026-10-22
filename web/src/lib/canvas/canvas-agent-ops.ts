@@ -2,14 +2,15 @@ import { nanoid } from "nanoid";
 
 import i18n from "@/i18n";
 import { getNodeSpec, isRegisteredNodeType } from "@/lib/canvas/node-registry";
-import { CanvasNodeType, type CanvasConnection, type CanvasNodeData, type CanvasNodeMetadata, type CanvasNodeTypeId, type ViewportTransform } from "@/types/canvas";
+import { normalizeConnection, wouldCreateConnectionCycle } from "@/lib/canvas/canvas-node-geometry";
+import { CanvasNodeType, type CanvasConnection, type CanvasInputRole, type CanvasNodeData, type CanvasNodeMetadata, type CanvasNodeTypeId, type ViewportTransform } from "@/types/canvas";
 
 export type CanvasAgentOp =
     | { type: "add_node"; id?: string; nodeType?: CanvasNodeTypeId; title?: string; position?: { x: number; y: number }; x?: number; y?: number; width?: number; height?: number; metadata?: CanvasNodeMetadata }
     | { type: "update_node"; id: string; patch?: Partial<CanvasNodeData>; metadata?: CanvasNodeMetadata }
     | { type: "delete_node"; id?: string; ids?: string[]; nodeType?: CanvasNodeTypeId }
     | { type: "delete_connections"; id?: string; ids?: string[]; all?: boolean }
-    | { type: "connect_nodes"; id?: string; fromNodeId: string; toNodeId: string }
+    | { type: "connect_nodes"; id?: string; fromNodeId: string; toNodeId: string; role?: CanvasInputRole }
     | { type: "set_viewport"; viewport: ViewportTransform }
     | { type: "select_nodes"; ids: string[] }
     | { type: "run_generation"; nodeId: string; mode?: "text" | "image" | "video" | "audio"; prompt?: string };
@@ -74,8 +75,11 @@ export function applyCanvasAgentOps(snapshot: CanvasAgentSnapshot, ops?: CanvasA
         if (op.type === "connect_nodes") {
             if (!op.fromNodeId || !op.toNodeId) return;
             const exists = connections.some((conn) => conn.fromNodeId === op.fromNodeId && conn.toNodeId === op.toNodeId);
-            const hasNodes = nodes.some((node) => node.id === op.fromNodeId) && nodes.some((node) => node.id === op.toNodeId);
-            if (!exists && hasNodes) connections = [...connections, { id: op.id || nanoid(), fromNodeId: op.fromNodeId, toNodeId: op.toNodeId }];
+            const from = nodes.find((node) => node.id === op.fromNodeId);
+            const to = nodes.find((node) => node.id === op.toNodeId);
+            const guardedEdge = from?.type === "krita-link:link" || to?.type === "krita-link:link" || from?.type === CanvasNodeType.Config || to?.type === CanvasNodeType.Config;
+            const validEdge = !guardedEdge || normalizeConnection(op.fromNodeId, op.toNodeId, nodes, "source")?.fromNodeId === op.fromNodeId;
+            if (!exists && from && to && validEdge && (!guardedEdge || !wouldCreateConnectionCycle(op.fromNodeId, op.toNodeId, connections))) connections = [...connections, { id: op.id || nanoid(), fromNodeId: op.fromNodeId, toNodeId: op.toNodeId, ...(op.role ? { role: op.role } : {}) }];
         }
         if (op.type === "set_viewport" && op.viewport) viewport = op.viewport;
         if (op.type === "select_nodes") selectedNodeIds = (op.ids || []).filter((id) => nodes.some((node) => node.id === id));

@@ -1,9 +1,9 @@
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { ConfigProvider, Switch } from "antd";
 import { useTranslation } from "react-i18next";
 
 import i18n from "@/i18n";
-import { type CanvasTheme } from "@/lib/canvas-theme";
+import { canvasThemes, type CanvasTheme } from "@/lib/canvas-theme";
 import { computeMediaSize, inferMediaRatio, inferMediaScale, mediaRatioOptions, mediaScaleOptions, readMediaDimensions } from "@/lib/media-size";
 import type { AiConfig } from "@/stores/use-config-store";
 
@@ -28,10 +28,9 @@ type ImageSettingsPanelProps = {
     showTitle?: boolean;
     className?: string;
     maxCount?: number;
-    quickCount?: number;
 };
 
-export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = true, className = "w-[320px] space-y-4 rounded-2xl px-1 py-0.5", maxCount = 15, quickCount = 10 }: ImageSettingsPanelProps) {
+export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = true, className = "w-[320px] space-y-4 rounded-2xl px-1 py-0.5", maxCount = 15 }: ImageSettingsPanelProps) {
     const { t } = useTranslation();
     const [snapDimensionToStep, setSnapDimensionToStep] = useState(true);
     const quality = config.quality || "auto";
@@ -62,17 +61,8 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
                     if (document.activeElement instanceof HTMLInputElement && event.currentTarget.contains(document.activeElement)) document.activeElement.blur();
                 }}
             >
-                {showTitle ? <div className="text-lg font-semibold">{t("settingsPanels.image.title")}</div> : null}
-                <div className="space-y-2.5">
-                    <SettingTitle color={theme.node.muted}>{t("settingsPanels.image.quality")}</SettingTitle>
-                    <div className="grid grid-cols-3 gap-2.5">
-                        {qualityOptions.map((item) => (
-                            <OptionPill key={item.value} selected={quality === item.value} theme={theme} onClick={() => onConfigChange("quality", item.value)}>
-                                {t(`settingsPanels.common.${item.labelKey}`)}
-                            </OptionPill>
-                        ))}
-                    </div>
-                </div>
+                {showTitle ? <div className="text-sm font-semibold">{t("settingsPanels.image.title")}</div> : null}
+                <QualityControl value={quality} theme={theme} onChange={(value) => onConfigChange("quality", value)} />
                 <div className="space-y-2.5">
                     <div className="flex items-center justify-between gap-3">
                         <SettingTitle color={theme.node.muted}>{t("settingsPanels.image.size")}</SettingTitle>
@@ -132,14 +122,7 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
                 </div>
                 <div className="space-y-2.5">
                     <SettingTitle color={theme.node.muted}>{t("settingsPanels.image.count")}</SettingTitle>
-                    <div className="grid grid-cols-4 gap-2.5">
-                        {Array.from({ length: quickCount }, (_, index) => index + 1).map((value) => (
-                            <OptionPill key={value} selected={count === value} theme={theme} onClick={() => onConfigChange("count", String(value))}>
-                                {t("settingsPanels.image.images", { count: value })}
-                            </OptionPill>
-                        ))}
-                        <CountInput value={count} max={maxCount} theme={theme} onChange={(value) => onConfigChange("count", String(value || 1))} />
-                    </div>
+                    <CountInput value={count} max={maxCount} theme={theme} label={t("settingsPanels.image.count")} onChange={(value) => onConfigChange("count", String(value))} />
                 </div>
             </div>
         </ImageSettingsTheme>
@@ -188,6 +171,31 @@ function OptionPill({ selected, theme, onClick, children }: { selected: boolean;
     );
 }
 
+function QualityControl({ value, theme, onChange }: { value: string; theme: CanvasTheme; onChange: (value: string) => void }) {
+    const { t } = useTranslation();
+    const index = Math.max(0, qualityOptions.findIndex((item) => item.value === value));
+    const progress = index / (qualityOptions.length - 1);
+    const thumbPosition = `calc(${progress * 100}% + ${14 - progress * 28}px)`;
+    const accent = index === 0 ? theme.node.muted : index === qualityOptions.length - 1 ? theme === canvasThemes.dark ? "#c084fc" : "#7e22ce" : theme === canvasThemes.dark ? "#60a5fa" : "#1d4ed8";
+    return (
+        <div className="rounded-2xl border px-3 pb-3 pt-2.5" style={{ background: theme.node.fill, borderColor: theme.node.stroke }}>
+            <div className="text-center text-xs font-semibold transition-colors duration-200 motion-reduce:transition-none" style={{ color: accent }}>{t(`settingsPanels.common.${qualityOptions[index].labelKey}`)}</div>
+            <div className="text-center text-[11px] leading-4" style={{ color: theme.node.muted }}>{t("settingsPanels.image.quality")}</div>
+            <div className="relative mt-2 h-7 rounded-full focus-within:ring-2 focus-within:ring-blue-500/60">
+                <div className="pointer-events-none absolute inset-x-0 top-1/2 h-6 -translate-y-1/2 overflow-hidden rounded-full" style={{ background: theme.node.stroke }}>
+                    <div className="absolute inset-y-0 left-0 rounded-full bg-[#3b82f6] transition-[width,opacity] duration-[260ms] ease-out motion-reduce:transition-none" style={{ width: thumbPosition, opacity: index > 0 ? 1 : 0 }} />
+                    <div className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-[#3b82f6] via-[#7478fb] to-[#b46af5] transition-[width,opacity] duration-[260ms] ease-out motion-reduce:transition-none" style={{ width: thumbPosition, opacity: index === qualityOptions.length - 1 ? 1 : 0 }} />
+                    <div className="absolute inset-0 flex items-center justify-between px-3.5">
+                        {qualityOptions.map((item, step) => <span key={item.value} className="size-1 rounded-full" style={{ background: step <= index && index > 0 ? "rgba(255,255,255,.6)" : theme.node.muted, opacity: 0.65 }} />)}
+                    </div>
+                </div>
+                <span className="pointer-events-none absolute top-1/2 size-7 -translate-x-1/2 -translate-y-1/2 rounded-full shadow-md transition-[left] duration-[260ms] ease-out motion-reduce:transition-none" style={{ left: thumbPosition, background: theme.node.text }} />
+                <input type="range" min={0} max={qualityOptions.length - 1} step={1} value={index} aria-label={t("settingsPanels.image.quality")} aria-valuetext={t(`settingsPanels.common.${qualityOptions[index].labelKey}`)} className="absolute inset-0 z-10 m-0 h-full w-full cursor-pointer appearance-none border-0 bg-transparent opacity-0 [&::-webkit-slider-runnable-track]:h-7 [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:size-7 [&::-webkit-slider-thumb]:appearance-none [&::-moz-range-track]:h-7 [&::-moz-range-track]:bg-transparent [&::-moz-range-thumb]:size-7 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0" onChange={(event) => onChange(qualityOptions[Number(event.currentTarget.value)].value)} />
+            </div>
+        </div>
+    );
+}
+
 function DimensionInput({ prefix, value, disabled, theme, alignToStep, onChange }: { prefix: string; value: number; disabled: boolean; theme: CanvasTheme; alignToStep: boolean; onChange: (value: number | null) => void }) {
     const commit = (input: HTMLInputElement) => {
         const next = alignDimension(Math.max(1, Math.floor(Number(input.value) || value || 1024)), alignToStep);
@@ -217,20 +225,36 @@ function DimensionInput({ prefix, value, disabled, theme, alignToStep, onChange 
     );
 }
 
-function CountInput({ value, max, theme, onChange }: { value: number; max: number; theme: CanvasTheme; onChange: (value: number | null) => void }) {
+function CountInput({ value, max, theme, label, onChange }: { value: number; max: number; theme: CanvasTheme; label: string; onChange: (value: number) => void }) {
+    const [draft, setDraft] = useState(String(value));
+    useEffect(() => setDraft(String(value)), [value]);
+    const parsed = Number(draft);
+    const current = draft.trim() && Number.isFinite(parsed) ? Math.floor(parsed) : value;
+    const commit = (next: number) => {
+        const clamped = Math.max(1, Math.min(max, Math.floor(next)));
+        setDraft(String(clamped));
+        if (clamped !== value) onChange(clamped);
+    };
+
     return (
-        <label className="col-span-2 flex h-9 overflow-hidden rounded-full border text-sm" style={{ borderColor: theme.node.stroke, color: theme.node.text }}>
+        <div className="flex h-9 w-full items-center overflow-hidden rounded-full border text-sm" style={{ borderColor: theme.node.stroke, color: theme.node.text }}>
+            <button type="button" aria-label={`${label} -1`} disabled={current <= 1} className="grid h-full w-10 shrink-0 place-items-center bg-transparent text-lg transition hover:opacity-60 disabled:opacity-30" onMouseDown={(event) => { event.preventDefault(); event.stopPropagation(); }} onClick={() => commit(current - 1)}>−</button>
             <input
                 type="number"
                 min={1}
                 max={max}
-                className="min-w-0 flex-1 bg-transparent px-3 text-center outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                style={{ color: theme.node.text, WebkitTextFillColor: theme.node.text }}
-                value={value || ""}
-                onChange={(event) => onChange(Number(event.target.value) || null)}
+                step={1}
+                aria-label={label}
+                className="h-full min-w-0 flex-1 border-x bg-transparent px-2 text-center outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                style={{ borderColor: theme.node.stroke, color: theme.node.text, WebkitTextFillColor: theme.node.text }}
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                onBlur={() => commit(current)}
+                onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }}
                 onMouseDown={(event) => event.stopPropagation()}
             />
-        </label>
+            <button type="button" aria-label={`${label} +1`} disabled={current >= max} className="grid h-full w-10 shrink-0 place-items-center bg-transparent text-lg transition hover:opacity-60 disabled:opacity-30" onMouseDown={(event) => { event.preventDefault(); event.stopPropagation(); }} onClick={() => commit(current + 1)}>+</button>
+        </div>
     );
 }
 
