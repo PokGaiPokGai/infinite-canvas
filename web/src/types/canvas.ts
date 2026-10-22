@@ -1,3 +1,5 @@
+import type { KritaNodeMetadata } from "@/types/krita-link";
+
 export type Position = {
     x: number;
     y: number;
@@ -45,6 +47,7 @@ export type CanvasNodeText = {
 };
 
 export type CanvasNodeMetadata = {
+    krita?: KritaNodeMetadata;
     content?: string;
     composerContent?: string;
     prompt?: string;

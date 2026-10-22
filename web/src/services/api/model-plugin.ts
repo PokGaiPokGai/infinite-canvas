@@ -91,7 +91,7 @@ function sleep(ms: number, signal?: AbortSignal) {
     });
 }
 
-function createPoll(signal?: AbortSignal) {
+export function createPoll(signal?: AbortSignal) {
     return async function poll<T, R>(request: () => Promise<T>, extract: (value: T) => R | null | undefined | false, options?: PluginPollOptions): Promise<R> {
         const intervalMs = options?.intervalMs ?? 2500;
         const timeoutMs = options?.timeoutMs ?? 300000;

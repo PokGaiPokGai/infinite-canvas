@@ -1,0 +1,15 @@
+export type KritaLayer = { id: string; name: string; type: string };
+export type KritaDocument = { id: string; name: string; width: number; height: number; colorModel: string; colorDepth: string; colorProfile: string; layers: KritaLayer[] };
+export type KritaStatus = { connected: boolean; version: 1; sessionId?: string; documents: KritaDocument[]; error?: string };
+export type KritaSnapshot = { id: string; sessionId: string; documentId: string; documentName: string; layerId?: string; width: number; height: number; colorModel: string; colorDepth: string; colorProfile: string; sha256: string; createdAt: string; imageUrl: string };
+export type KritaPresetId = "draft" | "detail";
+export type KritaGenerationParams = { steps: number; cfg: number; denoise: number; seed: number; sampler: string; scheduler: string };
+export type KritaPreset = { id: KritaPresetId; name: string; defaults: Omit<KritaGenerationParams, "seed">; supported?: string[] };
+export type KritaPresetCatalog = { presets: KritaPreset[]; models: string[]; samplers: string[]; schedulers: string[]; available: boolean; error?: string };
+export type KritaGenerationRequest = { snapshotId: string; prompt: string; negativePrompt?: string; model: string; presetId?: KritaPresetId; params: Partial<KritaGenerationParams>; backend?: "comfy" | "configured"; documentId?: string; documentName?: string; sessionId?: string; sourceWidth?: number; sourceHeight?: number };
+export type KritaGenerationImage = { id: string; url: string; width: number; height: number; sha256?: string };
+export type KritaGeneration = { id: string; status: "queued" | "running" | "succeeded" | "failed"; snapshotId: string; request: Omit<KritaGenerationRequest, "snapshotId"> & { snapshotId?: string }; error?: string; images: KritaGenerationImage[]; createdAt?: string };
+export type KritaSourceMetadata = { kind: "source"; documentId?: string; layerId?: string; snapshot?: KritaSnapshot };
+export type KritaPresetMetadata = { kind: "preset"; presetId: KritaPresetId; backend?: "comfy" | "configured"; model?: string; configuredModel?: string; negativePrompt?: string; params?: Partial<KritaGenerationParams>; generationId?: string };
+export type KritaResultMetadata = { kind: "result"; generationId: string; imageId: string; imageWidth: number; imageHeight: number; snapshotId: string; generatorNodeId: string; request: KritaGeneration["request"]; commandId?: string; fitToCanvas?: boolean; returnedLayerId?: string; returnedAt?: string };
+export type KritaNodeMetadata = KritaSourceMetadata | KritaPresetMetadata | KritaResultMetadata;

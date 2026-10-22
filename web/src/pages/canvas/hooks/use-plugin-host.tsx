@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import { useTranslation } from "react-i18next";
+import { getKritaToolbar, isKritaDockedNode, isKritaResultNode, KritaResultPanel, registerLocalKritaNodes } from "@/components/canvas/krita-link-nodes";
 
 import { requestEdit, requestGeneration, requestImageQuestion, type AiTextMessage } from "@/services/api/image";
 import { imageToDataUrl } from "@/services/image-storage";
@@ -106,7 +107,11 @@ export function usePluginHost(params: PluginHostParams) {
                     .filter((node): node is CanvasNodeData => Boolean(node)),
             updateNode: (nodeId, patch) => setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, ...patch } : node))),
             updateMetadata: (nodeId, patch) => setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, ...patch } } : node))),
-            applyOps: (ops) => applyAgentOps(ops),
+            applyOps: (ops) => {
+                applyAgentOps(ops);
+                const added = [...ops].reverse().find((op) => op.type === "add_node" && nodesRef.current.some((node) => node.id === op.id && isKritaDockedNode(node)));
+                if (added?.type === "add_node") setDialogNodeId(added.id || null);
+            },
             ai: pluginAi,
             openPanel: (nodeId) => setDialogNodeId(nodeId),
             closePanel: () => setDialogNodeId(null),
@@ -116,7 +121,7 @@ export function usePluginHost(params: PluginHostParams) {
 
     const renderPluginPanel = useCallback(
         (panelNode: CanvasNodeData) => {
-            const Panel = getNodeDefinition(panelNode.type)?.Panel;
+            const Panel = isKritaResultNode(panelNode) ? KritaResultPanel : getNodeDefinition(panelNode.type)?.Panel;
             if (!Panel) return null;
             const ctx = buildNodeContext(pluginHost, panelNode, theme, viewportRef.current.k);
             return <Panel ctx={ctx} onClose={() => setDialogNodeId(null)} />;
@@ -129,7 +134,7 @@ export function usePluginHost(params: PluginHostParams) {
         (node: CanvasNodeData): CanvasNodeToolbarItem[] => {
             const definition = getNodeDefinition(node.type);
             const ctx = buildNodeContext(pluginHost, node, theme, viewportRef.current.k);
-            const custom = definition?.toolbar?.(ctx) || [];
+            const custom = [...(definition?.toolbar?.(ctx) || []), ...getKritaToolbar(ctx)];
             // Show the interaction/move toggle only for nodes with content that are not forced into an interactive state.
             if (!definition?.interactionToggle || !node.metadata?.content || definition.forceInteractive?.(node)) return custom;
             const interactive = Boolean(node.metadata?.interactive);
@@ -148,6 +153,7 @@ export function usePluginHost(params: PluginHostParams) {
 
     // Load installed remote plugins on startup.
     useEffect(() => {
+        registerLocalKritaNodes();
         void ensurePluginsLoaded();
     }, []);
 

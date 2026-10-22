@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Service
+ServiceTypes=Krita/PythonPlugin
+X-KDE-Library=infinite_canvas_bridge
+X-Python-2-Compatible=false
+Name=Infinite Canvas Bridge
+Comment=Manual snapshots and new-layer imports for the local Infinite Canvas
