@@ -1,4 +1,6 @@
 import { resolveProductionInputs, REFERENCE_PACK, EXPORT_PRESET } from "@/lib/canvas/canvas-production";
+import { captureWorkflow, canMakeWorkflow, WORKFLOW_NODE } from "@/lib/canvas/workflow-graph";
+import { cancelProjectProcessing } from "@/lib/canvas/production-runner";
 import { VERSION_STACK, STACK_RELEASE, canStackNodes, stackDisplayNodes, stackedNodeIds, stackMembers, resolveVersionStacks, releaseVersionStack } from "@/lib/canvas/version-stack";
 import { onCanvasEvent } from "@/lib/canvas/canvas-event-bus";
 import { IMAGE_COMPARE, resolveComparisonNodes } from "@/lib/canvas/image-compare";
@@ -653,7 +655,7 @@ function InfiniteCanvasPage() {
             }
             const { fromNodeId, toNodeId } = connection;
             const exists = connectionsRef.current.some((conn) => conn.fromNodeId === fromNodeId && conn.toNodeId === toNodeId);
-            if (!exists && nodesRef.current.some((node) => (node.id === fromNodeId || node.id === toNodeId) && (node.type === KRITA_LINK || node.type === BLENDER_LINK || node.type === IMAGE_COMPARE || node.type === VERSION_STACK || node.type === REFERENCE_PACK || node.type === EXPORT_PRESET || node.type === CanvasNodeType.Config)) && wouldCreateConnectionCycle(fromNodeId, toNodeId, connectionsRef.current)) {
+            if (!exists && nodesRef.current.some((node) => (node.id === fromNodeId || node.id === toNodeId) && (node.type.startsWith("process:") || node.type === KRITA_LINK || node.type === BLENDER_LINK || node.type === IMAGE_COMPARE || node.type === VERSION_STACK || node.type === REFERENCE_PACK || node.type === EXPORT_PRESET || node.type === CanvasNodeType.Config)) && wouldCreateConnectionCycle(fromNodeId, toNodeId, connectionsRef.current)) {
                 message.warning("这条连线会形成循环，请调整连接方向。");
                 return;
             }
@@ -971,6 +973,20 @@ function InfiniteCanvasPage() {
         [chatSessions, cleanupCanvasFiles, projectId],
     );
 
+    useEffect(() => () => cancelProjectProcessing(projectId), [projectId]);
+
+    const workflowSelection = useCallback(() => {
+        try {
+            const members = nodesRef.current.filter(node => selectedNodeIdsRef.current.has(node.id));
+            const workflow = captureWorkflow(members, nodesRef.current, connectionsRef.current);
+            const bounds = getGroupWrapRect(members);
+            const node = createCanvasNode(WORKFLOW_NODE, { x: bounds.x + bounds.width + 240, y: bounds.y + 160 }, { workflow });
+            setNodes([...nodesRef.current, node]);
+            setConnections([...connectionsRef.current, ...[...new Set(Object.values(workflow.bindings))].map(id => ({ id: nanoid(), fromNodeId: id, toNodeId: node.id }))]);
+            setSelectedNodeIds(new Set([node.id])); setDialogNodeId(node.id); setToolbarNodeId(null);
+        } catch (error) { message.error(error instanceof Error ? error.message : "无法保存流程。"); }
+    }, [message]);
+
     const stackSelection = useCallback(() => {
         const current = nodesRef.current;
         const members = current.filter(node => selectedNodeIdsRef.current.has(node.id));
@@ -1119,6 +1135,7 @@ function InfiniteCanvasPage() {
         const memberMap = new Map(members.map(member => [member.id, nanoid()]));
         const memberCopies = members.map(member => ({ ...member, id: memberMap.get(member.id)!, position: { x: member.position.x + 36, y: member.position.y + 36 } }));
         if (source.metadata?.versionStack) next.metadata = { ...source.metadata, versionStack: { memberIds: memberCopies.map(member => member.id), selectedId: memberMap.get(source.metadata.versionStack.selectedId || "") } };
+        if (source.metadata?.workflow) next.metadata = { ...source.metadata, workflow: { ...structuredClone(source.metadata.workflow), expandedGroupId: undefined } };
         const memberConnections = connectionsRef.current.filter(edge => memberMap.has(edge.toNodeId)).map(edge => ({ ...edge, id: nanoid(), fromNodeId: memberMap.get(edge.fromNodeId) || edge.fromNodeId, toNodeId: memberMap.get(edge.toNodeId)! }));
         const referenceConnections = connectionsRef.current.filter((connection) => connection.toNodeId === nodeId).map((connection) => ({ ...connection, id: nanoid(), fromNodeId: memberMap.get(connection.fromNodeId) || connection.fromNodeId, toNodeId: id }));
 
@@ -1185,7 +1202,7 @@ function InfiniteCanvasPage() {
         const pastedNodes = nextNodes.map((node) => {
             const groupId = node.metadata?.groupId;
             const stack = node.metadata?.versionStack;
-            return { ...node, metadata: { ...node.metadata, groupId: groupId ? idMap.get(groupId) : undefined, ...(stack ? { versionStack: { memberIds: stack.memberIds.map(id => idMap.get(id)!).filter(Boolean), selectedId: stack.selectedId ? idMap.get(stack.selectedId) : undefined } } : {}) } };
+            return { ...node, metadata: { ...node.metadata, groupId: groupId ? idMap.get(groupId) : undefined, ...(node.metadata?.workflow ? { workflow: { ...structuredClone(node.metadata.workflow), expandedGroupId: undefined, bindings: Object.fromEntries(Object.entries(node.metadata.workflow.bindings).map(([key, id]) => [key, idMap.get(id) || id])) } } : {}), ...(stack ? { versionStack: { memberIds: stack.memberIds.map(id => idMap.get(id)!).filter(Boolean), selectedId: stack.selectedId ? idMap.get(stack.selectedId) : undefined } } : {}) } };
         });
 
         const nextConnections = clipboard.connections.flatMap((connection, index) => {
@@ -3551,6 +3568,8 @@ function InfiniteCanvasPage() {
                         showToolbar={!isNodeDragging && !isNodeResizing}
                         canStack={canStackSelection}
                         onStack={stackSelection}
+                        canWorkflow={canMakeWorkflow(selectedNodes)}
+                        onWorkflow={workflowSelection}
                         canGroup={canGroupSelection}
                         canUngroup={canUngroupSelection}
                         onGroup={groupSelection}

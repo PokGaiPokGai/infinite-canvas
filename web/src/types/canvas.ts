@@ -1,4 +1,5 @@
 import type { ReferencePack, ExportPreset, ProductionImage } from "./canvas-production";
+import type { MaskSettings, BatchSettings, BatchRow, WorkflowSettings, ProcessResult } from "./canvas-workflow";
 import type { KritaNodeMetadata } from "@/types/krita-link";
 import type { BlenderLinkMetadata } from "@/types/blender-link";
 
@@ -59,6 +60,15 @@ export type CanvasMediaOutput = {
 };
 
 export type CanvasNodeMetadata = {
+    maskSettings?: MaskSettings;
+    processOutputKey?: string;
+    processInputKey?: string;
+    outputKind?: "image" | "text";
+    batchSettings?: BatchSettings;
+    batchRows?: BatchRow[];
+    workflow?: WorkflowSettings;
+    processResults?: ProcessResult[];
+    selectedProcessResultId?: string;
     referencePack?: ReferencePack;
     exportPreset?: ExportPreset;
     productionInputs?: ProductionImage[];

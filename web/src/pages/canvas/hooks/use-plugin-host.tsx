@@ -1,4 +1,7 @@
 import { registerProductionNodes } from "@/components/canvas/production-nodes";
+import { registerProcessingNodes } from "@/components/canvas/processing-nodes";
+import { buildNodeGenerationContext, buildNodeResponseMessages, hydrateNodeGenerationContext, supportsLocalComfyControls } from "@/components/canvas/canvas-node-generation";
+import { nanoid } from "nanoid";
 import { registerVersionStackNode } from "@/components/canvas/version-stack-node";
 import { registerImageCompareNode } from "@/components/canvas/image-compare-node";
 import { useCallback, useEffect, useMemo, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
@@ -7,7 +10,7 @@ import { getKritaToolbar, isKritaDockedNode, isKritaResultNode, KritaResultPanel
 import { registerLocalBlenderNodes } from "@/components/canvas/blender-link-nodes";
 
 import { requestEdit, requestGeneration, requestImageQuestion, type AiTextMessage } from "@/services/api/image";
-import { imageToDataUrl } from "@/services/image-storage";
+import { imageToDataUrl, uploadImage } from "@/services/image-storage";
 import { requestVideoGeneration, storeGeneratedVideo } from "@/services/api/video";
 import { decodeChannelModel, selectableModelsByCapability, type AiConfig, type ModelCapability } from "@/stores/use-config-store";
 import { buildGenerationConfig } from "@/lib/canvas/canvas-generation-helpers";
@@ -57,6 +60,29 @@ export function usePluginHost(params: PluginHostParams) {
             }
         };
         return {
+            generateConfigured: async (node, nodes, connections, signal) => {
+                const mode = node.metadata?.generationMode || "image";
+                if (mode !== "image" && mode !== "text") throw new Error("复用流程当前执行图像和文本生成步骤。");
+                const config = buildGenerationConfig(effectiveConfig, node, mode);
+                ensureReady(config);
+                const context = await hydrateNodeGenerationContext(buildNodeGenerationContext(node.id, nodes, connections, node.metadata?.composerContent || node.metadata?.prompt || ""));
+                signal.throwIfAborted();
+                if (mode === "text") {
+                    const content = await requestImageQuestion(config, buildNodeResponseMessages(context), () => {}, { signal });
+                    return { content, outputText: content, outputKind: "text", status: "success" };
+                }
+                if (node.metadata?.comfy && !supportsLocalComfyControls(effectiveConfig, config.model)) throw new Error("种子、步数、CFG 与改绘强度矩阵需要支持这些参数的本机 ComfyUI 模型。");
+                const roles = context.referenceImages.map(image => context.referenceBindings.find(binding => binding.sourceNodeId === image.id)?.role || "reference");
+                const options = { signal, comfy: node.metadata?.comfy, referenceRoles: roles };
+                const generated = context.referenceImages.length ? await requestEdit(config, context.prompt, context.referenceImages, options) : await requestGeneration(config, context.prompt, options);
+                if (!generated.length) throw new Error("生成服务未返回图片。");
+                const images = await Promise.all(generated.map(async item => {
+                    const image = await uploadImage(item.dataUrl, { signal });
+                    return { id: nanoid(), content: image.url, storageKey: image.storageKey, naturalWidth: image.width, naturalHeight: image.height, bytes: image.bytes, mimeType: image.mimeType, status: "success" as const };
+                }));
+                const { id, ...primary } = images[0];
+                return { ...primary, outputImages: images, selectedOutputImageId: id, outputKind: "image", status: "success" };
+            },
             generateImage: async (prompt, options) => {
                 const config = { ...buildGenerationConfig(effectiveConfig, undefined, "image"), count: String(options?.count || 1), ...(options?.model ? { model: options.model } : {}), ...(options?.size ? { size: options.size } : {}) };
                 ensureReady(config);
@@ -165,6 +191,7 @@ export function usePluginHost(params: PluginHostParams) {
         registerImageCompareNode();
         registerVersionStackNode();
         registerProductionNodes();
+        registerProcessingNodes();
         void ensurePluginsLoaded();
     }, []);
 
