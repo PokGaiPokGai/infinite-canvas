@@ -8,6 +8,7 @@ import { pickImageSource } from "@/lib/image-thumbnail";
 import { previewUrlFor, subscribeImagePreviews, getImagePreviewRevision } from "@/services/image-storage";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
 import { hasCanvasNodeHandle } from "@/lib/canvas/canvas-connection-state";
+import { IMAGE_COMPARE } from "@/lib/canvas/image-compare";
 import { KRITA_LINK } from "@/lib/canvas/krita-link";
 import { BLENDER_LINK } from "@/lib/canvas/blender-link";
 import { isImageLinkNode } from "@/lib/canvas/canvas-input-role";
@@ -436,7 +437,7 @@ export const CanvasNode = React.memo(function CanvasNode({
             >
                 <div
                     ref={configContentContainerRef}
-                    className={`relative flex h-full w-full justify-center rounded-[inherit] ${data.type === CanvasNodeType.Config ? "items-start" : "items-center"} ${isBatchRoot ? "overflow-visible" : "overflow-hidden"}`}
+                    className={`relative flex h-full w-full justify-center rounded-[inherit] ${data.type === CanvasNodeType.Config ? "items-start" : "items-center"} ${isBatchRoot || data.type === IMAGE_COMPARE ? "overflow-visible" : "overflow-hidden"}`}
                     style={
                         {
                             background: isGroup ? "transparent" : hasImageContent || hasVideoContent || transparentBg ? "transparent" : theme.node.fill,
@@ -472,7 +473,7 @@ export const CanvasNode = React.memo(function CanvasNode({
 
                 {showImageInfo && hasImageContent ? <ImageInfoBar node={data} /> : null}
 
-                {!isGroup && !isImageLinkNode(data) && !hasImageContent && !hasVideoContent && !hasAudioContent ? <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12" style={{ background: `linear-gradient(to top, ${theme.canvas.background}66, transparent)` }} /> : null}
+                {!isGroup && data.type !== IMAGE_COMPARE && !isImageLinkNode(data) && !hasImageContent && !hasVideoContent && !hasAudioContent ? <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12" style={{ background: `linear-gradient(to top, ${theme.canvas.background}66, transparent)` }} /> : null}
 
                 {referenceSelectionState && (referenceSelectionState !== "available" || hovered) ? (
                     <div className="pointer-events-none absolute inset-0 z-[60] grid place-items-center rounded-[inherit]" style={{ background: `color-mix(in srgb, ${theme.canvas.background} ${referenceSelectionState === "target" ? 78 : referenceSelectionState === "disabled" ? 60 : 34}%, transparent)`, boxShadow: referenceSelectionState === "available" ? `inset 0 0 0 2px ${selectionBlue}` : undefined }}>

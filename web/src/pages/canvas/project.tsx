@@ -1,3 +1,4 @@
+import { IMAGE_COMPARE, resolveComparisonNodes } from "@/lib/canvas/image-compare";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent as ReactChangeEvent, DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -243,8 +244,9 @@ function InfiniteCanvasPage() {
     const deleteProjects = useCanvasStore((state) => state.deleteProjects);
     const currentProject = useCanvasStore((state) => state.projects.find((project) => project.id === projectId));
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
-    const [nodes, setNodes] = useState<CanvasNodeData[]>([]);
+    const [sourceNodes, setNodes] = useState<CanvasNodeData[]>([]);
     const [connections, setConnections] = useState<CanvasConnection[]>([]);
+    const nodes = useMemo(() => resolveComparisonNodes(sourceNodes, connections), [sourceNodes, connections, nodeRegistryVersion]);
     const [chatSessions, setChatSessions] = useState<CanvasAssistantSession[]>([]);
     const [activeChatId, setActiveChatId] = useState<string | null>(null);
     const [viewport, setViewport] = useState<ViewportTransform>({ x: 0, y: 0, k: 1 });
@@ -647,7 +649,7 @@ function InfiniteCanvasPage() {
             }
             const { fromNodeId, toNodeId } = connection;
             const exists = connectionsRef.current.some((conn) => conn.fromNodeId === fromNodeId && conn.toNodeId === toNodeId);
-            if (!exists && nodesRef.current.some((node) => (node.id === fromNodeId || node.id === toNodeId) && (node.type === KRITA_LINK || node.type === BLENDER_LINK || node.type === CanvasNodeType.Config)) && wouldCreateConnectionCycle(fromNodeId, toNodeId, connectionsRef.current)) {
+            if (!exists && nodesRef.current.some((node) => (node.id === fromNodeId || node.id === toNodeId) && (node.type === KRITA_LINK || node.type === BLENDER_LINK || node.type === IMAGE_COMPARE || node.type === CanvasNodeType.Config)) && wouldCreateConnectionCycle(fromNodeId, toNodeId, connectionsRef.current)) {
                 message.warning("这条连线会形成循环，请调整连接方向。");
                 return;
             }

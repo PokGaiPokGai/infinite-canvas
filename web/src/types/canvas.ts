@@ -58,6 +58,8 @@ export type CanvasMediaOutput = {
 };
 
 export type CanvasNodeMetadata = {
+    comparison?: { aId?: string; bId?: string; mode?: "slider" | "toggle"; selected?: "a" | "b" };
+    comparisonInputs?: ({ nodeId: string; title: string } & Partial<CanvasMediaOutput>)[];
     blender?: BlenderLinkMetadata;
     krita?: KritaNodeMetadata;
     comfy?: { negativePrompt?: string; denoise?: number; steps?: number; cfg?: number; seed?: number; sampler?: string; scheduler?: string; styleWeight?: number };

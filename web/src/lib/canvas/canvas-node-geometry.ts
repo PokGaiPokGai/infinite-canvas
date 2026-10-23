@@ -146,6 +146,16 @@ export function normalizeConnection(firstNodeId: string, secondNodeId: string, n
     const second = nodes.find((node) => node.id === secondNodeId);
     if (!first || !second || first.id === second.id) return null;
     const valid = (from: CanvasNodeData, to: CanvasNodeData) => hasCanvasNodeHandle(from, "source") && hasCanvasNodeHandle(to, "target") ? { fromNodeId: from.id, toNodeId: to.id } : null;
+    if (first.type === "image-compare:compare" || second.type === "image-compare:compare") {
+        const from = firstHandleType === "source" ? first : second;
+        const to = firstHandleType === "source" ? second : first;
+        if (to.type === "image-compare:compare" && from.type !== CanvasNodeType.Image && from.type !== "image-compare:compare" && !isImageLinkNode(from) && from.type !== "krita-link:source" && !(from.type === CanvasNodeType.Config && (from.metadata?.generationMode || "image") === "image") && getNodeDefinition(from.type)?.resource?.(from)?.kind !== "image") return null;
+        if (to.type !== "image-compare:compare" && isImageLinkNode(to)) {
+            if (to.type === "krita-link:link" && to.metadata?.krita?.mode !== "write") return null;
+            if (to.type === "blender-link:link" && to.metadata?.blender?.mode !== "write") return null;
+        }
+        return valid(from, to);
+    }
     if (isImageLinkNode(first) || isImageLinkNode(second)) {
         const from = firstHandleType === "source" ? first : second;
         const to = firstHandleType === "source" ? second : first;

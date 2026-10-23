@@ -1,3 +1,4 @@
+import { registerImageCompareNode } from "@/components/canvas/image-compare-node";
 import { useCallback, useEffect, useMemo, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import { useTranslation } from "react-i18next";
 import { getKritaToolbar, isKritaDockedNode, isKritaResultNode, KritaResultPanel, registerLocalKritaNodes } from "@/components/canvas/krita-link-nodes";
@@ -159,6 +160,7 @@ export function usePluginHost(params: PluginHostParams) {
     useEffect(() => {
         registerLocalKritaNodes();
         registerLocalBlenderNodes();
+        registerImageCompareNode();
         void ensurePluginsLoaded();
     }, []);
 
