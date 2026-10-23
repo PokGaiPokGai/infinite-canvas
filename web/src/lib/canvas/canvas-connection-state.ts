@@ -15,6 +15,7 @@ export function connectionUnavailableReason(connection: CanvasConnection, from?:
     if (!hasCanvasNodeHandle(from, "source")) return "源节点当前没有输出接口";
     if (!hasCanvasNodeHandle(to, "target")) return "目标节点当前没有输入接口";
     if (from.type === CanvasNodeType.Config && to.type === "krita-link:link" && (from.metadata?.generationMode || "image") !== "image") return "Krita 写回仅接受图像输出";
+    if (from.type === CanvasNodeType.Config && to.type === "blender-link:link" && (from.metadata?.generationMode || "image") !== "image") return "Blender 写回仅接受图像输出";
     if (from.type === CanvasNodeType.Config && to.type === CanvasNodeType.Config) {
         const sourceMode = from.metadata?.generationMode || "image";
         const targetMode = to.metadata?.generationMode || "image";

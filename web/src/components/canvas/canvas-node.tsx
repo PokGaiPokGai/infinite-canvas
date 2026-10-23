@@ -9,6 +9,8 @@ import { previewUrlFor, subscribeImagePreviews, getImagePreviewRevision } from "
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
 import { hasCanvasNodeHandle } from "@/lib/canvas/canvas-connection-state";
 import { KRITA_LINK } from "@/lib/canvas/krita-link";
+import { BLENDER_LINK } from "@/lib/canvas/blender-link";
+import { isImageLinkNode } from "@/lib/canvas/canvas-input-role";
 import { buildNodeContext } from "@/lib/canvas/plugin-node-context";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { CanvasResourceMentionTextarea } from "./canvas-resource-mention-textarea";
@@ -318,7 +320,7 @@ export const CanvasNode = React.memo(function CanvasNode({
             startWidth: data.width,
             startHeight: data.height,
             keepRatio: (data.type === CanvasNodeType.Image && !data.metadata?.freeResize) || data.type === CanvasNodeType.Video || Boolean(definition?.keepAspectRatio?.(data)),
-            ratio: data.type === KRITA_LINK ? data.width / (data.height || 1) : (data.metadata?.naturalWidth || data.width) / (data.metadata?.naturalHeight || data.height || 1),
+            ratio: isImageLinkNode(data) ? data.width / (data.height || 1) : (data.metadata?.naturalWidth || data.width) / (data.metadata?.naturalHeight || data.height || 1),
         };
         window.addEventListener("mousemove", handleResizeMove);
         window.addEventListener("mouseup", handleResizeUp);
@@ -358,7 +360,7 @@ export const CanvasNode = React.memo(function CanvasNode({
                 else onContextMenu(event, data.id);
             }}
         >
-            {!referenceSelectionState && data.type !== KRITA_LINK && (isSelected || hovered || isEditingTitle) && (
+            {!referenceSelectionState && !isImageLinkNode(data) && (isSelected || hovered || isEditingTitle) && (
                 <div className="absolute left-3 top-[-28px] z-[65] max-w-[calc(100%-24px)]" onMouseDown={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
                     {isEditingTitle ? (
                         <input
@@ -395,13 +397,13 @@ export const CanvasNode = React.memo(function CanvasNode({
             )}
 
             <div
-                className={`relative h-full w-full overflow-visible rounded-3xl border-2 ${data.type === KRITA_LINK ? "krita-link-aurora" : ""}`}
-                data-selected={data.type === KRITA_LINK ? isSelected : undefined}
+                className={`relative h-full w-full overflow-visible rounded-3xl border-2 ${data.type === KRITA_LINK ? "krita-link-aurora" : data.type === BLENDER_LINK ? "blender-link-aurora" : ""}`}
+                data-selected={isImageLinkNode(data) ? isSelected : undefined}
                 style={{
                     background: isGroup ? "transparent" : hasImageContent || hasVideoContent || transparentBg ? "transparent" : theme.node.fill,
-                    borderColor: isGroup ? (isGroupDropTarget || isActive ? selectionBlue : theme.node.stroke) : hasImageContent ? imageBorderColor : isActive ? selectionBlue : isRelated ? theme.node.muted : transparentBg ? "transparent" : theme.node.stroke,
+                    borderColor: data.type === BLENDER_LINK ? "var(--blender-link-orange)" : isGroup ? (isGroupDropTarget || isActive ? selectionBlue : theme.node.stroke) : hasImageContent ? imageBorderColor : isActive ? selectionBlue : isRelated ? theme.node.muted : transparentBg ? "transparent" : theme.node.stroke,
                     borderStyle: isGroup ? "dashed" : "solid",
-                    boxShadow: isGroupDropTarget ? `0 0 0 2px ${selectionBlue}66, inset 0 0 0 999px ${selectionBlue}10` : isActive ? `0 0 0 1px ${selectionBlue}55` : isRelated ? `0 0 0 1px ${theme.node.muted}55, 0 18px 48px rgba(0,0,0,.14)` : undefined,
+                    boxShadow: isGroupDropTarget ? `0 0 0 2px ${selectionBlue}66, inset 0 0 0 999px ${selectionBlue}10` : isActive ? data.type === BLENDER_LINK ? "0 0 0 1px var(--link-border-glow)" : `0 0 0 1px ${selectionBlue}55` : isRelated ? `0 0 0 1px ${theme.node.muted}55, 0 18px 48px rgba(0,0,0,.14)` : undefined,
                 }}
                 onMouseDown={(event) => {
                     if (!referenceSelectionState) onMouseDown(event, data.id);
@@ -467,7 +469,7 @@ export const CanvasNode = React.memo(function CanvasNode({
 
                 {showImageInfo && hasImageContent ? <ImageInfoBar node={data} /> : null}
 
-                {!isGroup && data.type !== KRITA_LINK && !hasImageContent && !hasVideoContent && !hasAudioContent ? <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12" style={{ background: `linear-gradient(to top, ${theme.canvas.background}66, transparent)` }} /> : null}
+                {!isGroup && !isImageLinkNode(data) && !hasImageContent && !hasVideoContent && !hasAudioContent ? <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12" style={{ background: `linear-gradient(to top, ${theme.canvas.background}66, transparent)` }} /> : null}
 
                 {referenceSelectionState && (referenceSelectionState !== "available" || hovered) ? (
                     <div className="pointer-events-none absolute inset-0 z-[60] grid place-items-center rounded-[inherit]" style={{ background: `color-mix(in srgb, ${theme.canvas.background} ${referenceSelectionState === "target" ? 78 : referenceSelectionState === "disabled" ? 60 : 34}%, transparent)`, boxShadow: referenceSelectionState === "available" ? `inset 0 0 0 2px ${selectionBlue}` : undefined }}>
@@ -484,7 +486,7 @@ export const CanvasNode = React.memo(function CanvasNode({
             {!referenceSelectionState && hasCanvasNodeHandle(data, "target") ? <ConnectionHandleDot side="left" visible={hovered || isSelected || isConnecting} onMouseDown={(event) => onConnectStart(event, data.id, "target")} /> : null}
             {!referenceSelectionState && hasCanvasNodeHandle(data, "source") ? <ConnectionHandleDot side="right" visible={hovered || isSelected || isConnecting} onMouseDown={(event) => onConnectStart(event, data.id, "source")} /> : null}
 
-            {data.type === KRITA_LINK && showPanel && renderPanel ? (
+            {isImageLinkNode(data) && showPanel && renderPanel ? (
                 <div className="absolute left-full top-0 z-[70] pl-3" style={{ transform: `scale(${1 / scale})`, transformOrigin: "top left" }} data-node-panel={data.id}>
                     <div data-canvas-no-zoom className="w-80 max-w-[calc(100vw-24px)] overflow-hidden rounded-xl border" style={{ maxHeight: "calc(100vh - 24px)", background: theme.node.panel, borderColor: theme.node.stroke }}>
                         {renderPanel(data)}
@@ -504,8 +506,8 @@ function NodeContent(props: NodeContentRendererProps) {
     if (props.node.type === CanvasNodeType.Config && props.renderNodeContent) return props.renderNodeContent(props.node);
     if (props.isBatchRoot && props.node.type === CanvasNodeType.Image) return <ImageNodeContent {...props} />;
     if (props.node.type === CanvasNodeType.Text && props.node.metadata?.texts?.length && (props.node.metadata.status !== "error" || props.node.metadata.texts.some((text) => text.content))) return <TextContent {...props} />;
-    if (props.node.type !== KRITA_LINK && props.node.metadata?.status === "loading") return <LoadingContent theme={props.theme} />;
-    if (props.node.type !== KRITA_LINK && props.node.metadata?.status === "error") return <ErrorContent node={props.node} theme={props.theme} onRetry={props.onRetry} />;
+    if (!isImageLinkNode(props.node) && props.node.metadata?.status === "loading") return <LoadingContent theme={props.theme} />;
+    if (!isImageLinkNode(props.node) && props.node.metadata?.status === "error") return <ErrorContent node={props.node} theme={props.theme} onRetry={props.onRetry} />;
 
     const Renderer = nodeContentRenderers[props.node.type as CanvasNodeType];
     if (Renderer) return <Renderer {...props} />;

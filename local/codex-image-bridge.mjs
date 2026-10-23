@@ -2,6 +2,7 @@
 import { createServer } from 'node:http';
 import { createSharedStorage } from './shared-storage.mjs';
 import { createKritaBridge } from './krita-bridge.mjs';
+import { createBlenderBridge } from './blender-bridge.mjs';
 import { createEnsureComfy } from './ensure-comfy.mjs';
 import { spawn } from 'node:child_process';
 import { createReadStream } from 'node:fs';
@@ -21,6 +22,7 @@ const active = new Map();
 const activeText = new Map();
 const sharedStorage = createSharedStorage();
 const kritaBridge = createKritaBridge({ appRoot, ensureComfy: createEnsureComfy(appRoot) });
+const blenderBridge = createBlenderBridge({ appRoot });
 const allowedOrigins = new Set(['http://127.0.0.1:3000']);
 const allowedHosts = new Set(['127.0.0.1:3000', '127.0.0.1:3002']);
 await access(cliJs);
@@ -342,6 +344,7 @@ const server = createServer(async (request, response) => {
         const path = new URL(request.url, 'http://127.0.0.1:3002').pathname;
         if (await sharedStorage.handle(request, response, path)) return;
         if (await kritaBridge.handle(request, response, path)) return;
+        if (await blenderBridge.handle(request, response, path)) return;
         if (request.method === 'GET' && path === '/health') {
             return json(response, 200, { service: 'infinite-canvas-codex-image', version: 1, kritaLinkVersion: 1, activeJobs: active.size + activeText.size });
         }

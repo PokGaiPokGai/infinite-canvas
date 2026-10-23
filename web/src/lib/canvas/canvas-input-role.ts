@@ -22,6 +22,10 @@ export function isKritaReadInputNode(node: CanvasNodeData) {
     return (node.type === "krita-link:source" && krita?.kind === "source") || (node.type === "krita-link:link" && krita?.kind === "link" && krita.mode === "read");
 }
 
+export function isImageLinkNode(node: CanvasNodeData) {
+    return node.type === "krita-link:link" || node.type === "blender-link:link";
+}
+
 export function isKritaWriteInputNode(node: CanvasNodeData) {
     return node.type === "krita-link:link" && node.metadata?.krita?.kind === "link" && node.metadata.krita.mode === "write";
 }

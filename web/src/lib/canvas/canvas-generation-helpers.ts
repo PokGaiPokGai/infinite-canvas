@@ -54,7 +54,7 @@ export async function hydrateCanvasImages(nodes: CanvasNodeData[]) {
             } : original;
             const content = metadata?.content;
             if ((node.type === CanvasNodeType.Video || node.type === CanvasNodeType.Audio) && metadata?.storageKey) return { ...node, metadata: { ...metadata, content: await resolveMediaUrl(metadata.storageKey, content) } };
-            if ((node.type !== CanvasNodeType.Image && node.type !== CanvasNodeType.Config && metadata?.krita?.kind !== "source" && metadata?.krita?.kind !== "link") || !metadata || (!content && !metadata.storageKey && !metadata.outputImages?.length)) return metadata === original ? node : { ...node, metadata };
+            if ((node.type !== CanvasNodeType.Image && node.type !== CanvasNodeType.Config && node.type !== "blender-link:link" && metadata?.krita?.kind !== "source" && metadata?.krita?.kind !== "link") || !metadata || (!content && !metadata.storageKey && !metadata.outputImages?.length)) return metadata === original ? node : { ...node, metadata };
             const images = await Promise.all(
                 (metadata.images || []).map(async (image) => {
                     if (!image.content && !image.storageKey) return image;

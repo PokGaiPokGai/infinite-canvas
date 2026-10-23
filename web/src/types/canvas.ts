@@ -1,4 +1,5 @@
 import type { KritaNodeMetadata } from "@/types/krita-link";
+import type { BlenderLinkMetadata } from "@/types/blender-link";
 
 export type Position = {
     x: number;
@@ -57,6 +58,7 @@ export type CanvasMediaOutput = {
 };
 
 export type CanvasNodeMetadata = {
+    blender?: BlenderLinkMetadata;
     krita?: KritaNodeMetadata;
     comfy?: { negativePrompt?: string; denoise?: number; steps?: number; cfg?: number; seed?: number; sampler?: string; scheduler?: string; styleWeight?: number };
     content?: string;

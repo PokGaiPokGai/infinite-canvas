@@ -141,7 +141,14 @@
 }
 
 @layer utilities {
-    .krita-link-aurora::before {
+    .blender-link-aurora {
+        --blender-link-orange: #e87d0d;
+        --link-border-gradient: linear-gradient(135deg, #fbc38b 0%, var(--blender-link-orange) 28%, #d85a0b 53%, #f39435 77%, #ffd2a3 100%);
+        --link-border-glow: rgba(232, 125, 13, .45);
+        --link-border-highlight: rgba(255, 219, 179, .9);
+    }
+
+    :is(.krita-link-aurora, .blender-link-aurora)::before {
         content: "";
         position: absolute;
         inset: -2px;
@@ -149,7 +156,7 @@
         border-radius: inherit;
         padding: 3px;
         pointer-events: none;
-        background: linear-gradient(135deg, #f79438 0%, #ec5187 28%, #aa63d5 53%, #508cd4 77%, #5ac9ac 100%);
+        background: var(--link-border-gradient, linear-gradient(135deg, #f79438 0%, #ec5187 28%, #aa63d5 53%, #508cd4 77%, #5ac9ac 100%));
         background-size: 165% 165%;
         background-position: 0% 0%;
         -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
@@ -159,13 +166,13 @@
         transition: inset 280ms cubic-bezier(.22, 1, .36, 1), padding 280ms cubic-bezier(.22, 1, .36, 1), filter 280ms ease;
     }
 
-    .krita-link-aurora[data-selected="true"]::before {
+    :is(.krita-link-aurora, .blender-link-aurora)[data-selected="true"]::before {
         inset: -3px;
         padding: 6px;
-        filter: drop-shadow(0 0 7px rgba(166, 221, 255, .45));
+        filter: drop-shadow(0 0 7px var(--link-border-glow, rgba(166, 221, 255, .45)));
     }
 
-    .krita-link-aurora::after {
+    :is(.krita-link-aurora, .blender-link-aurora)::after {
         content: "";
         position: absolute;
         inset: -2px;
@@ -175,7 +182,7 @@
         pointer-events: none;
         background:
             radial-gradient(ellipse 16% 12% at 16% 12%, rgba(255, 255, 255, .95), transparent 75%),
-            radial-gradient(ellipse 11% 18% at 91% 38%, rgba(207, 245, 255, .9), transparent 78%),
+            radial-gradient(ellipse 11% 18% at 91% 38%, var(--link-border-highlight, rgba(207, 245, 255, .9)), transparent 78%),
             radial-gradient(ellipse 18% 12% at 66% 92%, rgba(255, 255, 255, .85), transparent 75%);
         background-size: 130% 130%;
         background-position: 0% 0%;
@@ -186,7 +193,7 @@
         transition: inset 280ms cubic-bezier(.22, 1, .36, 1), padding 280ms cubic-bezier(.22, 1, .36, 1), opacity 280ms ease;
     }
 
-    .krita-link-aurora[data-selected="true"]::after {
+    :is(.krita-link-aurora, .blender-link-aurora)[data-selected="true"]::after {
         inset: -3px;
         padding: 6px;
         animation: krita-link-shimmer 5.2s ease-in-out infinite alternate;
@@ -205,8 +212,8 @@
     }
 
     @media (prefers-reduced-motion: reduce) {
-        .krita-link-aurora::before { animation: none; transition: none; }
-        .krita-link-aurora[data-selected="true"]::after { animation: none; opacity: .65; }
+        :is(.krita-link-aurora, .blender-link-aurora)::before { animation: none; transition: none; }
+        :is(.krita-link-aurora, .blender-link-aurora)[data-selected="true"]::after { animation: none; opacity: .65; }
     }
 
     .ai-title-aurora {

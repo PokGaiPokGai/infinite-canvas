@@ -3,6 +3,7 @@ import { nanoid } from "nanoid";
 import i18n from "@/i18n";
 import { getNodeSpec, isRegisteredNodeType } from "@/lib/canvas/node-registry";
 import { normalizeConnection, wouldCreateConnectionCycle } from "@/lib/canvas/canvas-node-geometry";
+import { isImageLinkNode } from "@/lib/canvas/canvas-input-role";
 import { CanvasNodeType, type CanvasConnection, type CanvasInputRole, type CanvasNodeData, type CanvasNodeMetadata, type CanvasNodeTypeId, type ViewportTransform } from "@/types/canvas";
 
 export type CanvasAgentOp =
@@ -77,7 +78,7 @@ export function applyCanvasAgentOps(snapshot: CanvasAgentSnapshot, ops?: CanvasA
             const exists = connections.some((conn) => conn.fromNodeId === op.fromNodeId && conn.toNodeId === op.toNodeId);
             const from = nodes.find((node) => node.id === op.fromNodeId);
             const to = nodes.find((node) => node.id === op.toNodeId);
-            const guardedEdge = from?.type === "krita-link:link" || to?.type === "krita-link:link" || from?.type === CanvasNodeType.Config || to?.type === CanvasNodeType.Config;
+            const guardedEdge = (!!from && isImageLinkNode(from)) || (!!to && isImageLinkNode(to)) || from?.type === CanvasNodeType.Config || to?.type === CanvasNodeType.Config;
             const validEdge = !guardedEdge || normalizeConnection(op.fromNodeId, op.toNodeId, nodes, "source")?.fromNodeId === op.fromNodeId;
             if (!exists && from && to && validEdge && (!guardedEdge || !wouldCreateConnectionCycle(op.fromNodeId, op.toNodeId, connections))) connections = [...connections, { id: op.id || nanoid(), fromNodeId: op.fromNodeId, toNodeId: op.toNodeId, ...(op.role ? { role: op.role } : {}) }];
         }
