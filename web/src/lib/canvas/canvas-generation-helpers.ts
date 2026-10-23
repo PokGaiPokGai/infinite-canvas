@@ -46,6 +46,10 @@ export async function resolveMetadataReferences(metadata: CanvasNodeMetadata) {
 export async function hydrateCanvasImages(nodes: CanvasNodeData[]) {
     return Promise.all(
         nodes.map(async (node) => {
+            if (node.metadata?.referencePack) {
+                const pack = node.metadata.referencePack;
+                return { ...node, metadata: { ...node.metadata, referencePack: { ...pack, images: await Promise.all(pack.images.map(async image => ({ ...image, content: await resolveImageUrl(image.storageKey, image.content) }))) } } };
+            }
             const original = node.metadata;
             const metadata = node.type === CanvasNodeType.Config && original ? {
                 ...original,

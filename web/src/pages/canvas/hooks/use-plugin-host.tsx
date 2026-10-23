@@ -1,3 +1,5 @@
+import { registerProductionNodes } from "@/components/canvas/production-nodes";
+import { registerVersionStackNode } from "@/components/canvas/version-stack-node";
 import { registerImageCompareNode } from "@/components/canvas/image-compare-node";
 import { useCallback, useEffect, useMemo, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import { useTranslation } from "react-i18next";
@@ -161,6 +163,8 @@ export function usePluginHost(params: PluginHostParams) {
         registerLocalKritaNodes();
         registerLocalBlenderNodes();
         registerImageCompareNode();
+        registerVersionStackNode();
+        registerProductionNodes();
         void ensurePluginsLoaded();
     }, []);
 
