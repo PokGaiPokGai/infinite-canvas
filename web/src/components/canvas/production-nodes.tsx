@@ -154,7 +154,7 @@ function ExportPanel({ ctx, onClose }: { ctx: CanvasNodeContext; onClose: () => 
 
 export function registerProductionNodes() {
     registerNodeDefinitions([
-        { type: REFERENCE_PACK, title: "风格 / 角色参考包", icon: <BookImage size={16} />, description: "可复用的参考集合、规则与版本", defaultSize: { width: 340, height: 260 }, defaultMetadata: { referencePack: EMPTY_PACK }, autoOpenPanel: true, Content: PackContent, Panel: PackPanel, resource: node => node.metadata?.referencePack ? { kind: "text", text: referencePackText(node.metadata.referencePack) } : null },
-        { type: EXPORT_PRESET, title: "导出预设", icon: <Download size={16} />, description: "统一尺寸、格式、命名与交付目录", defaultSize: { width: 300, height: 200 }, defaultMetadata: { exportPreset: DEFAULT_EXPORT }, autoOpenPanel: true, hasSourceHandle: false, Content: ExportContent, Panel: ExportPanel },
+        { type: REFERENCE_PACK, category: "assets", title: "风格 / 角色参考包", icon: <BookImage size={16} />, description: "可复用的参考集合、规则与版本", defaultSize: { width: 340, height: 260 }, defaultMetadata: { referencePack: EMPTY_PACK }, autoOpenPanel: true, Content: PackContent, Panel: PackPanel, resource: node => node.metadata?.referencePack ? { kind: "text", text: referencePackText(node.metadata.referencePack) } : null },
+        { type: EXPORT_PRESET, category: "assets", title: "导出预设", icon: <Download size={16} />, description: "统一尺寸、格式、命名与交付目录", defaultSize: { width: 300, height: 200 }, defaultMetadata: { exportPreset: DEFAULT_EXPORT }, autoOpenPanel: true, hasSourceHandle: false, Content: ExportContent, Panel: ExportPanel },
     ], "production");
 }

@@ -71,7 +71,6 @@ export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = 
             setIsControlPressed(false);
             panState.current.isPanning = false;
             setIsPanning(false);
-            document.body.style.cursor = "";
         };
 
         window.addEventListener("keydown", handleKeyDown);
@@ -128,7 +127,6 @@ export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = 
                 startedOnBackground: isBackgroundClick,
             };
             setIsPanning(true);
-            document.body.style.cursor = "grabbing";
             return;
         }
 
@@ -175,7 +173,6 @@ export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = 
             }
             panState.current.isPanning = false;
             setIsPanning(false);
-            document.body.style.cursor = "";
         };
 
         window.addEventListener("pointermove", handlePointerMove);
@@ -185,7 +182,6 @@ export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = 
             window.removeEventListener("pointermove", handlePointerMove);
             window.removeEventListener("pointerup", handlePointerUp);
             window.removeEventListener("pointercancel", handlePointerUp);
-            document.body.style.cursor = "";
         };
     }, [onCanvasDeselect, onViewportChange]);
 
@@ -205,14 +201,16 @@ export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = 
 
     const temporaryTool = isControlPressed || isSpacePressed;
     const activeTool = temporaryTool ? (tool === "select" ? "pan" : "select") : tool;
-    const cursor = isPanning ? "grabbing" : activeTool === "pan" ? "grab" : undefined;
+    const cursor = isPanning ? "grabbing" : activeTool === "pan" ? "grab" : "default";
 
     return (
         <div
             ref={containerRef}
-            className="relative h-full w-full select-none overflow-hidden"
+            data-canvas-surface
+            className={`relative h-full w-full select-none overflow-hidden [&_button:not(:disabled)]:cursor-pointer [&_[role=button]]:cursor-pointer [&_input]:cursor-auto [&_textarea]:cursor-text [&_select]:cursor-default [&_[contenteditable=true]]:cursor-text ${isPanning ? "[&_*]:!cursor-grabbing" : ""}`}
             style={{ background: theme.canvas.background, cursor }}
             onPointerDown={handlePointerDown}
+            onLostPointerCapture={() => { panState.current.isPanning = false; setIsPanning(false); }}
             onDoubleClick={handleDoubleClick}
             onWheel={handleWheel}
             onContextMenu={onContextMenu}

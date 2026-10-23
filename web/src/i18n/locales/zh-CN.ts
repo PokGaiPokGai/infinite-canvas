@@ -262,8 +262,11 @@ export default {
             deleteTitle: "删除画布？", deleteDescription: "将删除 {{count}} 个画布，里面的节点和连线也会一起移除。",
         },
         export: { defaultProjectName: "无限画布", defaultNodesName: "画布元素", item: "元素" },
+        imageCompare: { moveTitle: "切回移动：拖动节点", interactTitle: "切到交互：拖动平移对比图片" },
         createMenu: {
             fromNode: "引用该节点生成", close: "关闭", text: "文本生成", textDescription: "脚本、广告词、品牌文案", image: "图片生成", video: "视频生成", audio: "音频参考", config: "配置节点", configDescription: "模型、尺寸、数量和输入顺序", select: "选择节点",
+            search: "搜索节点名称或描述…", clearSearch: "清除搜索", category: "节点分类", count: "{{count}} 个节点", noResults: "没有匹配的节点，试试其他关键词或分类。",
+            categories: { all: "全部", basic: "基础内容", generation: "生成与流程", tools: "工具连接", image: "图像处理", assets: "素材与交付", extensions: "扩展节点" },
         },
         node: {
             node: "节点",

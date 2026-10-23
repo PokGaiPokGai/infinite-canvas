@@ -63,6 +63,8 @@ export type CanvasNodeMetadata = {
     maskSettings?: MaskSettings;
     processOutputKey?: string;
     processInputKey?: string;
+    processRunKey?: string;
+    processErrorKey?: string;
     outputKind?: "image" | "text";
     batchSettings?: BatchSettings;
     batchRows?: BatchRow[];

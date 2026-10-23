@@ -100,12 +100,16 @@ export type CanvasBuiltinPanelConfig = {
     writeBackToSelf?: boolean;
 };
 
+export const CANVAS_NODE_CATEGORIES = ["basic", "generation", "tools", "image", "assets", "extensions"] as const;
+export type CanvasNodeCategory = (typeof CANVAS_NODE_CATEGORIES)[number];
+
 // Shared node definition used by both built-in and plugin nodes.
 export type CanvasNodeDefinition = {
     type: string; // Built-ins use values such as "image"; plugins should use "<pluginId>:<name>".
     title: string;
     icon: ReactNode;
     description?: string;
+    category?: CanvasNodeCategory; // Creation-menu group; unclassified plugins appear under extensions.
     defaultSize: { width: number; height: number };
     defaultMetadata?: CanvasNodeMetadata;
     minimapColor?: string;

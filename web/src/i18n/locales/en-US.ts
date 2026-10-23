@@ -262,8 +262,11 @@ export default {
             deleteTitle: "Delete canvases?", deleteDescription: "This will delete {{count}} canvases along with their nodes and connections.",
         },
         export: { defaultProjectName: "Infinite Canvas", defaultNodesName: "Canvas elements", item: "Element" },
+        imageCompare: { moveTitle: "Switch to Move: drag the node", interactTitle: "Switch to Interact: drag to pan comparison images" },
         createMenu: {
             fromNode: "Generate from this node", close: "Close", text: "Generate text", textDescription: "Scripts, ad copy, and brand content", image: "Generate image", video: "Generate video", audio: "Audio reference", config: "Configuration node", configDescription: "Model, size, count, and input order", select: "Select a node",
+            search: "Search node names or descriptions…", clearSearch: "Clear search", category: "Node categories", count: "{{count}} nodes", noResults: "No matching nodes. Try another keyword or category.",
+            categories: { all: "All", basic: "Content", generation: "Generation & workflows", tools: "Tool connections", image: "Image processing", assets: "Assets & delivery", extensions: "Extensions" },
         },
         node: {
             node: "Node",

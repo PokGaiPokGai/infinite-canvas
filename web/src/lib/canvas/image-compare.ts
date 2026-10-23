@@ -35,8 +35,10 @@ export function resolveComparisonNodes(nodes: CanvasNodeData[], connections: Can
         });
         if (MASK_TYPES.includes(node.type)) {
             const processInputKey = maskInputKey(node.type, node.metadata?.maskSettings, inputs.map(input => ({ ...input, id: input.nodeId })));
-            const stale = processInputKey !== node.metadata?.processOutputKey;
-            const result = { ...node, metadata: { ...node.metadata, ...(stale ? { ...empty, status: node.metadata?.status === "loading" || node.metadata?.status === "error" ? node.metadata.status : "idle" as const } : {}), processInputKey, productionInputs: inputs.map(input => ({ ...input, id: input.nodeId })) } };
+            const stale = processInputKey !== node.metadata?.processOutputKey || !node.metadata?.content;
+            const failed = stale && node.metadata?.processErrorKey === processInputKey;
+            const loading = stale && node.metadata?.processRunKey === processInputKey;
+            const result = { ...node, metadata: { ...node.metadata, ...(stale ? empty : {}), status: failed ? "error" as const : loading ? "loading" as const : stale ? "idle" as const : "success" as const, errorDetails: failed ? node.metadata?.errorDetails : undefined, processInputKey, productionInputs: inputs.map(input => ({ ...input, id: input.nodeId })) } };
             visiting.delete(node.id); resolved.set(node.id, result); return result;
         }
         const settings = node.metadata?.comparison;

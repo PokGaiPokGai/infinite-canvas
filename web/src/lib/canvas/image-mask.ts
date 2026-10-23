@@ -25,6 +25,7 @@ export async function processMask(type: string, settings: MaskSettings, inputs: 
     if (!source || source.kind !== "image" || !source.content) throw new Error("请连接并选择已就绪的图片。");
     if (type !== ALPHA_APPLY && inputs.length !== 1) throw new Error("此蒙版步骤需要一张输入图片。");
     const sourceImage = await loadImage(await imageToDataUrl({ storageKey: source.storageKey, url: source.content }, { signal }));
+    signal.throwIfAborted();
     const canvas = document.createElement("canvas");
     canvas.width = sourceImage.naturalWidth; canvas.height = sourceImage.naturalHeight;
     const context = canvas.getContext("2d", { willReadFrequently: true });
@@ -35,6 +36,7 @@ export async function processMask(type: string, settings: MaskSettings, inputs: 
         const mask = inputs.find(input => input.id === settings.maskId);
         if (!mask || mask.kind !== "image" || mask.id === source.id || !mask.content || inputs.length !== 2) throw new Error("连接两张图片，并分别指定原图与蒙版。");
         const image = await loadImage(await imageToDataUrl({ storageKey: mask.storageKey, url: mask.content }, { signal }));
+        signal.throwIfAborted();
         if (image.naturalWidth !== canvas.width || image.naturalHeight !== canvas.height) throw new Error("原图与蒙版尺寸必须相同，请先对齐尺寸。");
         context.clearRect(0, 0, canvas.width, canvas.height); context.drawImage(image, 0, 0);
         const matte = context.getImageData(0, 0, canvas.width, canvas.height).data;
@@ -56,10 +58,12 @@ export async function processMask(type: string, settings: MaskSettings, inputs: 
             const primitive = type === MASK_GROW ? `<feMorphology operator="${radius > 0 ? "dilate" : "erode"}" radius="${Math.abs(radius)}"/>` : `<feGaussianBlur stdDeviation="${radius}" edgeMode="duplicate"/>`;
             const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${canvas.width}" height="${canvas.height}"><defs><filter id="mask" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">${primitive}</filter></defs><image width="100%" height="100%" xlink:href="${canvas.toDataURL("image/png")}" filter="url(#mask)"/></svg>`;
             const filtered = await loadImage(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`);
+            signal.throwIfAborted();
             context.fillStyle = "#000000"; context.fillRect(0, 0, canvas.width, canvas.height); context.drawImage(filtered, 0, 0);
         }
     }
     signal.throwIfAborted();
     const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob(value => value ? resolve(value) : reject(new Error("蒙版编码失败。")), "image/png"));
+    signal.throwIfAborted();
     return { ...imageMetadata(await uploadImage(blob, { signal })), outputKind: "image" as const, status: "success" as const };
 }

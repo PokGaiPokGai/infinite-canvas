@@ -1,6 +1,9 @@
 import { resolveProductionInputs, REFERENCE_PACK, EXPORT_PRESET } from "@/lib/canvas/canvas-production";
 import { captureWorkflow, canMakeWorkflow, WORKFLOW_NODE } from "@/lib/canvas/workflow-graph";
 import { cancelProjectProcessing } from "@/lib/canvas/production-runner";
+import { useMaskAutoUpdate } from "./hooks/use-mask-auto-update";
+import { sameHistoryNodes } from "@/lib/canvas/canvas-history-inputs";
+import { MASK_TYPES } from "@/lib/canvas/image-mask";
 import { VERSION_STACK, STACK_RELEASE, canStackNodes, stackDisplayNodes, stackedNodeIds, stackMembers, resolveVersionStacks, releaseVersionStack } from "@/lib/canvas/version-stack";
 import { onCanvasEvent } from "@/lib/canvas/canvas-event-bus";
 import { IMAGE_COMPARE, resolveComparisonNodes } from "@/lib/canvas/image-compare";
@@ -256,7 +259,7 @@ function InfiniteCanvasPage() {
     const [chatSessions, setChatSessions] = useState<CanvasAssistantSession[]>([]);
     const [activeChatId, setActiveChatId] = useState<string | null>(null);
     const [viewport, setViewport] = useState<ViewportTransform>({ x: 0, y: 0, k: 1 });
-    const [canvasTool, setCanvasTool] = useState<"select" | "pan">("pan");
+    const [canvasTool, setCanvasTool] = useState<"select" | "pan">("select");
     const [size, setSize] = useState({ width: 1200, height: 720 });
     const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(new Set());
     const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
@@ -528,14 +531,16 @@ function InfiniteCanvasPage() {
         const next = createHistoryEntry();
         const previous = lastHistoryRef.current;
         if (
-            previous?.nodes === next.nodes &&
+            previous && sameHistoryNodes(previous.nodes, next.nodes) &&
             previous.connections === next.connections &&
             previous.chatSessions === next.chatSessions &&
             previous.activeChatId === next.activeChatId &&
             previous.backgroundMode === next.backgroundMode &&
             previous.showImageInfo === next.showImageInfo
-        )
+        ) {
+            lastHistoryRef.current = next;
             return;
+        }
 
         if (historyCommitTimerRef.current) clearTimeout(historyCommitTimerRef.current);
         historyCommitTimerRef.current = setTimeout(() => {
@@ -909,6 +914,7 @@ function InfiniteCanvasPage() {
     }).sort().join("|"), [nodes]);
     useKritaAutoRead({ projectId, projectLoaded, bindings: autoReadBindings, nodesRef, setNodes, retryMs: 10_000 });
     useKritaAutoWrite({ projectId, projectLoaded, nodes, connections, host: pluginHost, theme });
+    useMaskAutoUpdate({ projectId, projectLoaded, nodes, connectionsRef, setNodes });
     const createNode = useCallback(
         (type: CanvasNodeTypeId, position?: Position) => {
             const targetPosition = position || getCanvasCenter();
@@ -2471,6 +2477,10 @@ function InfiniteCanvasPage() {
     const handleGenerateNode = useCallback(
         async (nodeId: string, mode: CanvasNodeGenerationMode, prompt: string) => {
             const sourceNode = nodesRef.current.find((node) => node.id === nodeId);
+            if (connectionsRef.current.some(connection => connection.toNodeId === nodeId && nodesRef.current.some(node => node.id === connection.fromNodeId && MASK_TYPES.includes(node.type) && isConnectionOperational(connection, node, sourceNode) && (!node.metadata?.content || node.metadata.status !== "success")))) {
+                message.warning("已连接的蒙版尚未就绪，请等待自动更新完成；失败时请打开节点重试。");
+                return;
+            }
             if (mode === "image" && sourceNode?.type === CanvasNodeType.Config && connectionsRef.current.some((connection) => connection.toNodeId === nodeId && nodesRef.current.some((node) => node.id === connection.fromNodeId && isConnectionOperational(connection, node, sourceNode) && (node.metadata?.krita?.kind === "source" || (node.metadata?.krita?.kind === "link" && node.metadata.krita.mode === "read")) && !node.metadata.content))) {
                 message.error("已连接的 Krita 输入尚未读取画面，请先点击「读取当前画面」。");
                 return;
@@ -3500,7 +3510,6 @@ function InfiniteCanvasPage() {
                     {nodeCreatePosition ? (
                         <NodeCreateMenu
                             position={nodeCreatePosition}
-                            scale={viewport.k}
                             onCreate={(type) => {
                                 createNode(type, nodeCreatePosition);
                                 setNodeCreatePosition(null);

@@ -274,7 +274,7 @@ let registered = false;
 export function registerLocalBlenderNodes() {
     if (import.meta.env.VITE_LOCAL_SHARED_STORAGE !== "1" || registered) return;
     registered = true;
-    registerNodeDefinitions([{ type: BLENDER_LINK, title: "Blender Link", icon: <img src="/icons/blender.svg" alt="" className="size-4" />, description: "读取 Blender 视口／渲染图，更新或新建工程贴图", defaultSize: { width: 360, height: 360 }, defaultMetadata: { blender: { mode: "read", writeMode: "image", colorSpace: "sRGB" } }, hasSourceHandle: true, hasTargetHandle: node => node.metadata?.blender?.mode === "write", keepAspectRatio: () => true, Content: LinkContent, Panel: LinkPanel,
+    registerNodeDefinitions([{ type: BLENDER_LINK, category: "tools", title: "Blender Link", icon: <img src="/icons/blender.svg" alt="" className="size-4" />, description: "读取 Blender 视口／渲染图，更新或新建工程贴图", defaultSize: { width: 360, height: 360 }, defaultMetadata: { blender: { mode: "read", writeMode: "image", colorSpace: "sRGB" } }, hasSourceHandle: true, hasTargetHandle: node => node.metadata?.blender?.mode === "write", keepAspectRatio: () => true, Content: LinkContent, Panel: LinkPanel,
         resource: node => node.metadata?.content && (node.metadata.blender?.mode === "read" || hasBlenderWriteOutput(node)) ? { kind: "image", url: node.metadata.content } : null,
     }], "local-blender-link");
 }

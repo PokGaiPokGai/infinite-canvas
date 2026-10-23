@@ -183,6 +183,12 @@ Shift 多选图片，点击选区上方「版本堆叠」。点击堆叠展开�
 
 ## 新一轮功能优化分支
 
+### 主分支继续开发
+
+已合并后的日常界面优化可直接在 `main` 修改。双击主目录的 `启动主分支开发版.cmd`，在 [主分支开发画布](http://127.0.0.1:3070/canvas) 使用主检出 `web/` 的实时源码，配置为 `local/vite.main-dev.config.ts`。原版 3000 是已有静态预览，旧 worktree 地址继续由各自源码提供。
+
+此入口复用已有 3002 共享数据库与 Krita／Blender／生成服务；未运行时沿用 `Start-CanvasUX.ps1` 的共享桥接启动逻辑。身份接口 `/__main-dev`，日志及前端所有权记录为 `.local/main-dev-*`，重复启动复用当前入口服务，不终止其他分支进程。网页标题由公共开发标题插件读取实际分支与端口。
+
 `codex/canvas-ux-next` 从本地 `main` 的 `c5b7be3` 创建，包含已合并的公共面板、主页入口及 Blender Link。双击当前 worktree 根目录的 `启动功能优化版.cmd`，打开 [功能优化画布](http://127.0.0.1:3011/canvas)。
 
 - 源码来自本 worktree 的 `web/`；配置为 `local/vite.canvas-ux-next.config.ts`。复用 `Start-CanvasUX.ps1`，本入口指定 `canvas-ux-next` 和端口 `3011`。

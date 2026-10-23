@@ -9,7 +9,6 @@ import { REFERENCE_PACK, referencePackText } from "./canvas-production";
 
 const runs = new Map<string, AbortController>();
 const runKey = (ctx: CanvasNodeContext) => `${ctx.projectId}:${ctx.node.id}`;
-const maskOutput = (node: CanvasNodeData): CanvasNodeMetadata => ({ ...resultMetadata(nodeResult(node) || undefined), processOutputKey: node.metadata?.processOutputKey, status: "success", errorDetails: undefined });
 export const isProcessing = (ctx: CanvasNodeContext) => runs.has(runKey(ctx));
 export const cancelProcessing = (ctx: CanvasNodeContext) => runs.get(runKey(ctx))?.abort();
 export function cancelProjectProcessing(projectId: string) { for (const [key, controller] of runs) if (key.startsWith(projectId + ":")) controller.abort(); }
@@ -62,17 +61,6 @@ async function evaluate(nodes: CanvasNodeData[], edges: CanvasConnection[], outp
     };
     for (const output of outputs) await visit(output);
     return { nodes: [...byId.values()], executed: [...done].filter(id => MASK_TYPES.includes(byId.get(id)!.type) || generate && byId.get(id)!.type === CanvasNodeType.Config) };
-}
-
-export function runMaskChain(ctx: CanvasNodeContext) {
-    const nodes = structuredClone(ctx.getNodes()); const connections = structuredClone(ctx.getConnections());
-    // managedProcessing marks the display node busy; the captured graph retains its input snapshot.
-    return managedProcessing(ctx, async signal => {
-        const result = await evaluate(nodes, connections, [ctx.node.id], ctx, signal, false);
-        signal.throwIfAborted();
-        ctx.applyOps(result.executed.filter(id => id !== ctx.node.id && ctx.getNode(id)).map(id => ({ type: "update_node" as const, id, metadata: maskOutput(result.nodes.find(node => node.id === id)!) })));
-        return maskOutput(result.nodes.find(node => node.id === ctx.node.id)!);
-    });
 }
 
 export function prepareBatch(settings: BatchSettings, upstream: CanvasNodeData[], defaultModel: string, connections: CanvasConnection[] = []): BatchRow[] {
