@@ -1,3 +1,6 @@
+import { resolveProductionInputs, REFERENCE_PACK, EXPORT_PRESET } from "@/lib/canvas/canvas-production";
+import { VERSION_STACK, STACK_RELEASE, canStackNodes, stackDisplayNodes, stackedNodeIds, stackMembers, resolveVersionStacks, releaseVersionStack } from "@/lib/canvas/version-stack";
+import { onCanvasEvent } from "@/lib/canvas/canvas-event-bus";
 import { IMAGE_COMPARE, resolveComparisonNodes } from "@/lib/canvas/image-compare";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent as ReactChangeEvent, DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
@@ -246,7 +249,7 @@ function InfiniteCanvasPage() {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const [sourceNodes, setNodes] = useState<CanvasNodeData[]>([]);
     const [connections, setConnections] = useState<CanvasConnection[]>([]);
-    const nodes = useMemo(() => resolveComparisonNodes(sourceNodes, connections), [sourceNodes, connections, nodeRegistryVersion]);
+    const nodes = useMemo(() => resolveProductionInputs(resolveComparisonNodes(resolveVersionStacks(sourceNodes), connections), connections), [sourceNodes, connections, nodeRegistryVersion]);
     const [chatSessions, setChatSessions] = useState<CanvasAssistantSession[]>([]);
     const [activeChatId, setActiveChatId] = useState<string | null>(null);
     const [viewport, setViewport] = useState<ViewportTransform>({ x: 0, y: 0, k: 1 });
@@ -649,7 +652,7 @@ function InfiniteCanvasPage() {
             }
             const { fromNodeId, toNodeId } = connection;
             const exists = connectionsRef.current.some((conn) => conn.fromNodeId === fromNodeId && conn.toNodeId === toNodeId);
-            if (!exists && nodesRef.current.some((node) => (node.id === fromNodeId || node.id === toNodeId) && (node.type === KRITA_LINK || node.type === BLENDER_LINK || node.type === IMAGE_COMPARE || node.type === CanvasNodeType.Config)) && wouldCreateConnectionCycle(fromNodeId, toNodeId, connectionsRef.current)) {
+            if (!exists && nodesRef.current.some((node) => (node.id === fromNodeId || node.id === toNodeId) && (node.type === KRITA_LINK || node.type === BLENDER_LINK || node.type === IMAGE_COMPARE || node.type === VERSION_STACK || node.type === REFERENCE_PACK || node.type === EXPORT_PRESET || node.type === CanvasNodeType.Config)) && wouldCreateConnectionCycle(fromNodeId, toNodeId, connectionsRef.current)) {
                 message.warning("这条连线会形成循环，请调整连接方向。");
                 return;
             }
@@ -700,7 +703,7 @@ function InfiniteCanvasPage() {
             let bestNodeId: string | null = null;
             let bestPriority = Number.POSITIVE_INFINITY;
 
-            [...nodesRef.current]
+            stackDisplayNodes(nodesRef.current)
                 .reverse()
                 .forEach((node) => {
                     const anchor = getConnectionTargetAnchor(node, current);
@@ -737,9 +740,12 @@ function InfiniteCanvasPage() {
         // `nodes` keeps the container rect re-read on node changes, matching the previous behaviour when the container resizes without a size update.
     }, [nodes, size.height, size.width, viewport.k, viewport.x, viewport.y]);
 
+    const hiddenStackIds = useMemo(() => stackedNodeIds(nodes), [nodes]);
+    const displayNodes = useMemo(() => nodes.filter(node => !hiddenStackIds.has(node.id)), [nodes, hiddenStackIds]);
+
     const visibleNodes = useMemo(
-        () => nodes.filter((node) => node.position.x + node.width > viewBounds.left && node.position.x < viewBounds.right && node.position.y + node.height > viewBounds.top && node.position.y < viewBounds.bottom),
-        [nodes, viewBounds],
+        () => displayNodes.filter((node) => node.position.x + node.width > viewBounds.left && node.position.x < viewBounds.right && node.position.y + node.height > viewBounds.top && node.position.y < viewBounds.bottom),
+        [displayNodes, viewBounds],
     );
 
     const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
@@ -750,7 +756,7 @@ function InfiniteCanvasPage() {
             connections.flatMap((connection) => {
                 const from = nodeById.get(connection.fromNodeId);
                 const to = nodeById.get(connection.toNodeId);
-                if (!from || !to) return [];
+                if (!from || !to || hiddenStackIds.has(from.id) || hiddenStackIds.has(to.id)) return [];
                 const startX = from.position.x + from.width;
                 const startY = from.position.y + from.height / 2;
                 const endX = to.position.x;
@@ -760,7 +766,7 @@ function InfiniteCanvasPage() {
                     Math.max(startX + curvature, endX) > viewBounds.left && Math.min(startX, endX - curvature) < viewBounds.right && Math.max(startY, endY) > viewBounds.top && Math.min(startY, endY) < viewBounds.bottom;
                 return inView ? [{ connection, from, to, unavailableReason: connectionUnavailableReason(connection, from, to) }] : [];
             }),
-        [connections, nodeById, nodeRegistryVersion, viewBounds],
+        [connections, nodeById, nodeRegistryVersion, viewBounds, hiddenStackIds],
     );
     const roleBadgeSlotById = useMemo(() => {
         const counts = new Map<string, number>();
@@ -801,6 +807,7 @@ function InfiniteCanvasPage() {
     const previewContent = previewImageId ? previewNode?.metadata?.images?.find((image) => image.id === previewImageId)?.content : previewNode?.metadata?.content;
     const hasMultipleSelectedNodes = selectedNodeIds.size > 1;
     const selectedNodes = useMemo(() => nodes.filter((node) => selectedNodeIds.has(node.id)), [nodes, selectedNodeIds]);
+    const canStackSelection = canStackNodes(selectedNodes);
     const canGroupSelection = canGroupSelectedNodes(selectedNodeIds, nodes);
     const canUngroupSelection = canUngroupSelectedNodes(selectedNodeIds, nodes);
     const activeNodeId = hasMultipleSelectedNodes ? null : hoveredNodeId || (selectedNodeIds.size === 1 ? Array.from(selectedNodeIds)[0] : null);
@@ -963,6 +970,37 @@ function InfiniteCanvasPage() {
         [chatSessions, cleanupCanvasFiles, projectId],
     );
 
+    const stackSelection = useCallback(() => {
+        const current = nodesRef.current;
+        const members = current.filter(node => selectedNodeIdsRef.current.has(node.id));
+        if (!canStackNodes(members)) return;
+        const first = members[0];
+        const bounds = getGroupWrapRect(members);
+        const stack = { ...createCanvasNode(VERSION_STACK, { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 }), metadata: { versionStack: { memberIds: members.map(node => node.id), selectedId: first.id } } };
+        setNodes([...current, stack]);
+        setConnections([...connectionsRef.current, ...members.map(node => ({ id: nanoid(), fromNodeId: node.id, toNodeId: stack.id }))]);
+        setSelectedNodeIds(new Set([stack.id]));
+        setSelectedConnectionId(null);
+        setToolbarNodeId(null);
+        setDialogNodeId(stack.id);
+        setContextMenu(null);
+    }, []);
+
+    useEffect(() => {
+        const off = onCanvasEvent(STACK_RELEASE, payload => {
+            const request = payload as { projectId?: string; stackId?: string; memberId?: string } | undefined;
+            if (request?.projectId !== projectId || !request.stackId) return;
+            const result = releaseVersionStack(nodesRef.current, connectionsRef.current, request.stackId, request.memberId);
+            if (!result) return;
+            setNodes(result.nodes);
+            setConnections(result.connections);
+            setSelectedNodeIds(new Set(result.selectedIds));
+            setToolbarNodeId(null);
+            setDialogNodeId(null);
+        });
+        return () => { off(); };
+    }, [projectId]);
+
     const groupSelection = useCallback(() => {
         const selectedIds = selectedNodeIdsRef.current;
         const members = collectGroupMemberNodes(selectedIds, nodesRef.current);
@@ -1076,17 +1114,23 @@ function InfiniteCanvasPage() {
             title: `${source.title} Copy`,
             position: { x: source.position.x + 36, y: source.position.y + 36 },
         };
-        const referenceConnections = connectionsRef.current.filter((connection) => connection.toNodeId === nodeId).map((connection) => ({ ...connection, id: nanoid(), toNodeId: id }));
+        const members = source.type === VERSION_STACK ? stackMembers(source, nodesRef.current) : [];
+        const memberMap = new Map(members.map(member => [member.id, nanoid()]));
+        const memberCopies = members.map(member => ({ ...member, id: memberMap.get(member.id)!, position: { x: member.position.x + 36, y: member.position.y + 36 } }));
+        if (source.metadata?.versionStack) next.metadata = { ...source.metadata, versionStack: { memberIds: memberCopies.map(member => member.id), selectedId: memberMap.get(source.metadata.versionStack.selectedId || "") } };
+        const memberConnections = connectionsRef.current.filter(edge => memberMap.has(edge.toNodeId)).map(edge => ({ ...edge, id: nanoid(), fromNodeId: memberMap.get(edge.fromNodeId) || edge.fromNodeId, toNodeId: memberMap.get(edge.toNodeId)! }));
+        const referenceConnections = connectionsRef.current.filter((connection) => connection.toNodeId === nodeId).map((connection) => ({ ...connection, id: nanoid(), fromNodeId: memberMap.get(connection.fromNodeId) || connection.fromNodeId, toNodeId: id }));
 
-        setNodes((prev) => [...prev, next]);
-        setConnections((prev) => [...prev, ...referenceConnections]);
+        setNodes((prev) => [...prev, ...memberCopies, next]);
+        setConnections((prev) => [...prev, ...memberConnections, ...referenceConnections]);
         setSelectedNodeIds(new Set([id]));
         setSelectedConnectionId(null);
         if (next.type !== CanvasNodeType.Group) setDialogNodeId(id);
     }, []);
 
     const copySelectedNodes = useCallback(() => {
-        const selectedIds = selectedNodeIdsRef.current;
+        const selectedIds = new Set(selectedNodeIdsRef.current);
+        nodesRef.current.filter(node => selectedIds.has(node.id) && node.type === VERSION_STACK).forEach(stack => stackMembers(stack, nodesRef.current).forEach(member => selectedIds.add(member.id)));
         if (!selectedIds.size) return;
 
         const copiedNodes = nodesRef.current
@@ -1139,8 +1183,8 @@ function InfiniteCanvasPage() {
 
         const pastedNodes = nextNodes.map((node) => {
             const groupId = node.metadata?.groupId;
-            if (!groupId) return node;
-            return { ...node, metadata: { ...node.metadata, groupId: idMap.get(groupId) } };
+            const stack = node.metadata?.versionStack;
+            return { ...node, metadata: { ...node.metadata, groupId: groupId ? idMap.get(groupId) : undefined, ...(stack ? { versionStack: { memberIds: stack.memberIds.map(id => idMap.get(id)!).filter(Boolean), selectedId: stack.selectedId ? idMap.get(stack.selectedId) : undefined } } : {}) } };
         });
 
         const nextConnections = clipboard.connections.flatMap((connection, index) => {
@@ -1158,10 +1202,11 @@ function InfiniteCanvasPage() {
 
         setNodes((prev) => [...prev, ...pastedNodes]);
         setConnections((prev) => [...prev, ...nextConnections]);
-        setSelectedNodeIds(new Set(pastedNodes.map((node) => node.id)));
+        setSelectedNodeIds(new Set(stackDisplayNodes(pastedNodes).map((node) => node.id)));
         setSelectedConnectionId(null);
         setContextMenu(null);
-        setDialogNodeId(pastedNodes[0]?.type === CanvasNodeType.Group ? null : pastedNodes[0]?.id || null);
+        const firstVisible = stackDisplayNodes(pastedNodes)[0];
+        setDialogNodeId(firstVisible?.type === CanvasNodeType.Group ? null : firstVisible?.id || null);
         return true;
     }, [getCanvasCenter]);
 
@@ -1493,7 +1538,7 @@ function InfiniteCanvasPage() {
             const rectH = Math.abs(world.y - currentSelection.startWorldY);
             const nextSelected = new Set<string>(currentSelection.additive ? currentSelection.initialSelectedNodeIds : []);
 
-            nodesRef.current
+            stackDisplayNodes(nodesRef.current)
                 .forEach((node) => {
                     const intersects = rectX < node.position.x + node.width && rectX + rectW > node.position.x && rectY < node.position.y + node.height && rectY + rectH > node.position.y;
 
@@ -1680,7 +1725,7 @@ function InfiniteCanvasPage() {
 
             if (isModifierShortcut && !event.altKey && key === "a") {
                 event.preventDefault();
-                setSelectedNodeIds(new Set(nodesRef.current.map((node) => node.id)));
+                setSelectedNodeIds(new Set(stackDisplayNodes(nodesRef.current).map((node) => node.id)));
                 setSelectedConnectionId(null);
                 setContextMenu(null);
                 setSelectionBox(null);
@@ -3285,7 +3330,7 @@ function InfiniteCanvasPage() {
 
     return (
         <main className="flex h-full min-h-0 overflow-hidden" style={{ background: theme.canvas.background, color: theme.node.text }}>
-            <CanvasSidePanel nodes={nodes} selectedNodeIds={selectedNodeIds} onFocusNode={focusNode} onPreviewNode={setPreviewNodeId} onHoverNode={setHoverPreviewNodeId} onInsertAsset={handleAssetInsert} />
+            <CanvasSidePanel nodes={displayNodes} selectedNodeIds={selectedNodeIds} onFocusNode={focusNode} onPreviewNode={setPreviewNodeId} onHoverNode={setHoverPreviewNodeId} onInsertAsset={handleAssetInsert} />
             <section className="relative min-w-0 flex-1 overflow-hidden">
                 <CanvasTopBar
                     title={currentProject?.title || t("canvas.projectPage.untitledCanvas")}
@@ -3503,6 +3548,8 @@ function InfiniteCanvasPage() {
                         nodes={selectedNodes}
                         viewport={viewport}
                         showToolbar={!isNodeDragging && !isNodeResizing}
+                        canStack={canStackSelection}
+                        onStack={stackSelection}
                         canGroup={canGroupSelection}
                         canUngroup={canUngroupSelection}
                         onGroup={groupSelection}
@@ -3535,7 +3582,7 @@ function InfiniteCanvasPage() {
                     onShowImageInfoChange={setShowImageInfo}
                 />
 
-                {isMiniMapOpen ? <Minimap nodes={nodes} viewport={viewport} viewportSize={size} onViewportChange={setViewport} /> : null}
+                {isMiniMapOpen ? <Minimap nodes={displayNodes} viewport={viewport} viewportSize={size} onViewportChange={setViewport} /> : null}
 
                 <CanvasZoomControls scale={viewport.k} onScaleChange={setZoomScale} onReset={resetViewport} isMiniMapOpen={isMiniMapOpen} onToggleMiniMap={() => setIsMiniMapOpen((value) => !value)} />
 

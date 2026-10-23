@@ -1,3 +1,4 @@
+import type { ReferencePack, ExportPreset, ProductionImage } from "./canvas-production";
 import type { KritaNodeMetadata } from "@/types/krita-link";
 import type { BlenderLinkMetadata } from "@/types/blender-link";
 
@@ -58,6 +59,11 @@ export type CanvasMediaOutput = {
 };
 
 export type CanvasNodeMetadata = {
+    referencePack?: ReferencePack;
+    exportPreset?: ExportPreset;
+    productionInputs?: ProductionImage[];
+    versionStack?: { memberIds: string[]; selectedId?: string };
+    stackInputs?: ({ nodeId: string; title: string } & Partial<CanvasMediaOutput> & { status?: string })[];
     comparison?: { aId?: string; bId?: string; mode?: "slider" | "toggle"; selected?: "a" | "b" };
     comparisonInputs?: ({ nodeId: string; title: string } & Partial<CanvasMediaOutput>)[];
     blender?: BlenderLinkMetadata;

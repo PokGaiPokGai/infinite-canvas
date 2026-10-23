@@ -1,3 +1,4 @@
+import { REFERENCE_PACK, referencePackText } from "@/lib/canvas/canvas-production";
 import type { AiTextMessage } from "@/services/api/image";
 import { resolveModelRequestConfig, resolveModelScript, type AiConfig } from "@/stores/use-config-store";
 import i18n from "@/i18n";
@@ -53,6 +54,7 @@ type NodeGenerationResourceInput = {
 type NodeGenerationGroupInput = {
     nodeId: string;
     type: "group";
+    alwaysInclude?: boolean;
     title: string;
     children: NodeGenerationResourceInput[];
 };
@@ -119,6 +121,16 @@ function buildComposerGenerationContext(inputs: NodeGenerationInput[], prompt: s
         lastIndex = match.index + match[0].length;
     }
 
+    for (const input of inputs) {
+        if (input.type !== "group" || !input.alwaysInclude) continue;
+        for (const resource of input.children) {
+            if (labelByNodeId.has(resource.nodeId)) continue;
+            const label = generationLabel(resource.type, counts[resource.type]++);
+            labelByNodeId.set(resource.nodeId, label);
+            if (resource.type === "text") textBlocks.push(textBlock(label, resource.text || ""));
+            else selectedInputs.push(resource);
+        }
+    }
     const connectedRoleImages = flattenGenerationInputs(inputs).filter((input) => input.image && input.role && !labelByNodeId.has(input.nodeId));
     selectedInputs.push(...connectedRoleImages);
     nextPrompt += prompt.slice(lastIndex);
@@ -128,7 +140,7 @@ function buildComposerGenerationContext(inputs: NodeGenerationInput[], prompt: s
     const referenceVideos = selectedInputs.map((input) => input.video).filter((video): video is ReferenceVideo => Boolean(video));
     const referenceAudios = selectedInputs.map((input) => input.audio).filter((audio): audio is ReferenceAudio => Boolean(audio));
 
-    if (!hasToken && !connectedRoleImages.length) {
+    if (!hasToken && !connectedRoleImages.length && !selectedInputs.length && !textBlocks.length) {
         return {
             prompt,
             referenceImages: [],
@@ -157,6 +169,11 @@ function buildComposerGenerationContext(inputs: NodeGenerationInput[], prompt: s
 
 export function buildNodeGenerationInputs(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[]): NodeGenerationInput[] {
     return getGenerationResourceConnections(nodeId, nodes, connections).flatMap(({ node, connection }): NodeGenerationInput[] => {
+        if (node.type === REFERENCE_PACK && node.metadata?.referencePack) {
+            const pack = node.metadata.referencePack;
+            const children: NodeGenerationResourceInput[] = [{ nodeId: `${node.id}:rules`, type: "text", title: pack.name, text: referencePackText(pack) }, ...pack.images.filter(image => image.content || image.storageKey).map(image => ({ nodeId: `${node.id}:${image.id}`, type: "image" as const, title: image.title, connectionId: connection.id, role: connection.role || (pack.kind === "character" ? "character" as const : "style" as const), instruction: connection.instruction, image: { id: `${node.id}:${image.id}`, name: image.title, type: image.mimeType || "image/png", dataUrl: image.content || "", storageKey: image.storageKey } }))];
+            return [{ nodeId: node.id, type: "group", title: pack.name || node.title, alwaysInclude: true, children }];
+        }
         const resources = node.type === CanvasNodeType.Group ? [] : readNodeGenerationResource(node);
         // Older Krita connections may have been created before the first snapshot, without a role.
         // Give only an actual image from a read node the default role; other legacy edges keep their semantics.

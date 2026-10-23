@@ -146,6 +146,17 @@ export function normalizeConnection(firstNodeId: string, secondNodeId: string, n
     const second = nodes.find((node) => node.id === secondNodeId);
     if (!first || !second || first.id === second.id) return null;
     const valid = (from: CanvasNodeData, to: CanvasNodeData) => hasCanvasNodeHandle(from, "source") && hasCanvasNodeHandle(to, "target") ? { fromNodeId: from.id, toNodeId: to.id } : null;
+    if (first.type.startsWith("production:") || second.type.startsWith("production:")) {
+        const from = firstHandleType === "source" ? first : second;
+        const to = firstHandleType === "source" ? second : first;
+        if (from.type === "production:export-preset") return null;
+        if (to.type.startsWith("production:")) {
+            const image = from.type === CanvasNodeType.Image || from.type === "image-compare:compare" || from.type === "version-stack:images" || isImageLinkNode(from) || (from.type === CanvasNodeType.Config && (from.metadata?.generationMode || "image") === "image") || getNodeDefinition(from.type)?.resource?.(from)?.kind === "image";
+            if (!image) return null;
+        }
+        if (from.type === "production:reference-pack" && to.type !== CanvasNodeType.Config && !getNodeDefinition(to.type)?.useBuiltinPanel) return null;
+        return valid(from, to);
+    }
     if (first.type === "image-compare:compare" || second.type === "image-compare:compare") {
         const from = firstHandleType === "source" ? first : second;
         const to = firstHandleType === "source" ? second : first;
