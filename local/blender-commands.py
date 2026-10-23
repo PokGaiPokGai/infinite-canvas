@@ -208,7 +208,7 @@ def apply_texture(payload):
         raise LinkError(400, "输入图片校验失败。")
     original = node.image if node else None
     previous_fake_user = original.use_fake_user if original else False
-    image = backup = None
+    image = None
     previous = None
     try:
         with tempfile.TemporaryDirectory(prefix="infinite-canvas-write-") as folder:
@@ -223,10 +223,6 @@ def apply_texture(payload):
                             "path": target.filepath_raw, "format": target.file_format, "colorSpace": target.colorspace_settings.name,
                             "alpha": target.alpha_mode, "fakeUser": target.use_fake_user,
                             "packed": bytes(target.packed_file.data) if target.packed_file else None}
-                backup = copy_current_image(target)
-                backup.name = target.name + " · 写回前"
-                backup.pack()
-                backup.use_fake_user = True
                 # Reload a validated PNG into the SAME Image ID. This refreshes the
                 # buffer (including dimensions/precision) without changing its users.
                 if target.packed_file:
@@ -254,8 +250,7 @@ def apply_texture(payload):
                     image.use_fake_user = True
         written = target if target else image
         result = {"commandId": command_id, "sessionId": state()["sessionId"], "destination": destination,
-                  "imageId": image_id(written), "imageName": written.name, "sha256": payload["sha256"],
-                  "backupImageName": backup.name if backup else None}
+                  "imageId": image_id(written), "imageName": written.name, "sha256": payload["sha256"]}
         writes[command_id] = {"fingerprint": fingerprint, "result": result}
         return result
     except Exception:
@@ -273,8 +268,6 @@ def apply_texture(payload):
             elif target.packed_file:
                 target.unpack(method="REMOVE")
             target.use_fake_user = previous["fakeUser"]
-        if backup:
-            bpy.data.images.remove(backup)
         if node:
             node.image = original
         if original:

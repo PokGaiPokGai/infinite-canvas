@@ -2,17 +2,18 @@ export type BlenderSource = { id: string; kind: "viewport" | "render"; name: str
 export type BlenderTarget = { id: string; materialId: string; materialName: string; nodeName: string; imageId: string | null; imageName: string | null; users: number };
 export type BlenderImage = { id: string; name: string; width: number; height: number; users: number; colorSpace: string };
 export type BlenderImagePreview = { sessionId: string; imageId: string; revision: string; width: number; height: number; imageBase64: string };
-export type BlenderStatus = { connected: boolean; version: 1; sessionId?: string; blenderVersion?: string; fileName?: string; sceneName?: string; sources: BlenderSource[]; targets: BlenderTarget[]; images: BlenderImage[]; error?: string };
+export type BlenderStatus = { connected: boolean; port: number; version: 1; sessionId?: string; blenderVersion?: string; fileName?: string; sceneName?: string; sources: BlenderSource[]; targets: BlenderTarget[]; images: BlenderImage[]; error?: string };
 export type BlenderSnapshot = { id: string; sessionId: string; sourceId: string; sourceName: string; width: number; height: number; sha256: string; createdAt: string; imageUrl: string };
 export type BlenderDestination = { kind: "image"; imageId: string; expectedRevision: string } | { kind: "new"; name: string } | { kind: "node"; targetId: string; expectedImageId: string | null };
-export type BlenderReceipt = { commandId: string; sessionId: string; destination: BlenderDestination; imageId: string; imageName: string; backupImageName?: string | null; sha256: string; returnedAt: string };
-export type BlenderWrite = { commandId: string; sessionId: string; destination: BlenderDestination; colorSpace: "sRGB" | "Non-Color"; storageKey: string; inputKey: string };
+export type BlenderReceipt = { commandId: string; sessionId: string; port: number; destination: BlenderDestination; imageId: string; imageName: string; sha256: string; returnedAt: string };
+export type BlenderWrite = { commandId: string; sessionId: string; port: number; destination: BlenderDestination; colorSpace: "sRGB" | "Non-Color"; storageKey: string; inputKey: string };
 export type BlenderLinkMetadata = {
     mode: "read" | "write";
     sessionId?: string;
     sourceId?: string;
     writeMode?: BlenderDestination["kind"];
     imageId?: string;
+    imageRevision?: string;
     imageName?: string;
     materialId?: string;
     targetId?: string;

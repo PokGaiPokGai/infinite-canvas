@@ -13,11 +13,13 @@ async function checked(path: string, body?: unknown, signal?: AbortSignal) {
     return response;
 }
 export const getBlenderStatus = async (signal?: AbortSignal): Promise<BlenderStatus> => (await checked("/status", undefined, signal)).json();
+export const getBlenderConnection = async (): Promise<{ port: number }> => (await checked("/connection")).json();
+export const setBlenderConnection = async (port: number): Promise<{ port: number }> => (await checked("/connection", { port })).json();
 export const createBlenderSnapshot = async (sessionId: string, sourceId: string): Promise<BlenderSnapshot> => (await checked("/snapshots", { sessionId, sourceId })).json();
 export const getBlenderImagePreview = async (sessionId: string, imageId: string, signal?: AbortSignal): Promise<BlenderImagePreview> => (await checked("/image-preview", { sessionId, imageId }, signal)).json();
 export const writeBlenderTexture = async (write: BlenderWrite, imageBase64: string): Promise<BlenderReceipt> => {
-    const { commandId, sessionId, destination, colorSpace } = write;
-    return (await checked("/returns", { commandId, sessionId, destination, colorSpace, imageBase64 })).json();
+    const { commandId, sessionId, port, destination, colorSpace } = write;
+    return (await checked("/returns", { commandId, sessionId, port, destination, colorSpace, imageBase64 })).json();
 };
 export async function getBlenderImage(url: string) {
     const parsed = new URL(url, window.location.origin);

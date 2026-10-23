@@ -107,20 +107,25 @@ with tempfile.TemporaryDirectory(prefix="infinite-canvas-blender-test-") as fold
     assert list(shared.pixels) == before_pixels and commands.image_revision(shared) == revision
     direct = {**new_payload, "commandId": str(uuid.uuid4()), "destination": {"kind": "image", "imageId": commands.image_id(shared), "expectedRevision": revision}}
     uid = shared.session_uid
+    shared_name = shared.name
+    count = len(bpy.data.images)
     result = commands.run(direct)
     assert "error" not in result, result
     assert shared.session_uid == uid and result["imageId"] == direct["destination"]["imageId"]
     assert all(tex.image == shared for _, tex in shared_materials)
     assert list(shared.size) == [3, 1] and shared.packed_file
     assert all(abs(a - b) < 1e-6 for a, b in zip(shared.pixels, fixture.pixels))
-    backup = bpy.data.images[result["backupImageName"]]
-    assert backup.packed_file and backup.use_fake_user and list(backup.size) == [2, 2]
-    assert list(backup.pixels) == before_pixels
-    count = len(bpy.data.images)
+    assert len(bpy.data.images) == count and shared.name == shared_name
+    assert "backupImageName" not in result
     assert commands.run(direct) == result and len(bpy.data.images) == count
     assert commands.run({**direct, "commandId": str(uuid.uuid4())})["status"] == 409
     assert len(bpy.data.images) == count
-    print("PASS: read-only preview, image ID and both material references preserved, dimensions/RGBA/backup/idempotence")
+    for _ in range(3):
+        repeated = {**direct, "commandId": str(uuid.uuid4()), "destination": {**direct["destination"], "expectedRevision": commands.image_revision(shared)}}
+        assert "error" not in commands.run(repeated)
+        assert len(bpy.data.images) == count and shared.name == shared_name
+    assert all("写回前" not in image.name for image in bpy.data.images)
+    print("PASS: direct overwrite preserves image ID, name, shared references and RGBA; repeated writes create no backup images")
 
     # External files, including floating-point targets, remain byte-for-byte intact.
     saved_targets = []
@@ -135,19 +140,19 @@ with tempfile.TemporaryDirectory(prefix="infinite-canvas-blender-test-") as fold
             if floating:
                 target_image.pack()
             disk_bytes = path.read_bytes()
-            # Include a local unsaved edit; backup must retain it too.
+            # Include a local unsaved edit, which direct overwrite replaces too.
             target_image.pixels[0] = 0.7
-            old_pixels = list(target_image.pixels)
             old_id = target_image.session_uid
+            count = len(bpy.data.images)
             request = {**new_payload, "commandId": str(uuid.uuid4()), "colorSpace": color,
                        "destination": {"kind": "image", "imageId": commands.image_id(target_image), "expectedRevision": commands.image_revision(target_image)}}
             applied = commands.run(request)
             assert "error" not in applied, applied
             assert target_image.session_uid == old_id and target_image.colorspace_settings.name == color
             assert target_image.packed_file and path.read_bytes() == disk_bytes
-            assert list(bpy.data.images[applied["backupImageName"]].pixels) == old_pixels
+            assert len(bpy.data.images) == count and "backupImageName" not in applied
             saved_targets.append((target_image.name, list(target_image.pixels), color, str(path), disk_bytes))
-    print("PASS: external and packed targets, float targets, color/data settings, unsaved backups, disk files untouched")
+    print("PASS: external and packed targets, float targets, color/data settings, no extra images, disk files untouched")
 
     # A manual edit after preview, a removed image, and invalid input must not write.
     stale = {**direct, "commandId": str(uuid.uuid4()), "destination": {**direct["destination"], "expectedRevision": commands.image_revision(shared)}}
@@ -198,7 +203,6 @@ with tempfile.TemporaryDirectory(prefix="infinite-canvas-blender-test-") as fold
     shared.pack()
     saved_shared_pixels = list(shared.pixels)
     shared_name = shared.name
-    backup_name = backup.name
     standalone_name = standalone.name
     material_names = [item.name for item, _ in shared_materials]
     blend_path = str(Path(folder) / "roundtrip.blend")
@@ -214,10 +218,9 @@ with tempfile.TemporaryDirectory(prefix="infinite-canvas-blender-test-") as fold
     assert all(abs(a - b) < 1e-6 for a, b in zip(restored_shared.pixels, saved_shared_pixels))
     for name in material_names:
         assert next(tex for tex in bpy.data.materials[name].node_tree.nodes if tex.type == "TEX_IMAGE").image == restored_shared
-    assert list(bpy.data.images[backup_name].size) == [2, 2]
-    assert all(abs(a - b) < 1e-6 for a, b in zip(bpy.data.images[backup_name].pixels, before_pixels))
+    assert all("写回前" not in image.name for image in bpy.data.images)
     assert bpy.data.images[standalone_name].packed_file
-    print("PASS: save/reopen retains images without material users, backups, shared references, dimensions and color/data pixels")
+    print("PASS: save/reopen retains direct overwrites, standalone images, shared references and color/data pixels without backups")
 
     assert commands.run(payload)["status"] == 409
     print("PASS: PNG conversion, original output settings preserved, stale-session rejection")

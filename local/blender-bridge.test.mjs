@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Readable } from 'node:stream';
+import { createServer } from 'node:net';
 import { randomUUID, createHash } from 'node:crypto';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -67,7 +68,7 @@ test('snapshot bytes, hash and dimensions are verified before storage', async ()
 }));
 
 test('write receipts survive a new bridge instance and changed targets or pixels cannot reuse the command', async () => fixture(async appRoot => {
-    const payload = { sessionId: randomUUID(), commandId: randomUUID(), destination: { kind: 'node', targetId: randomUUID(), expectedImageId: null }, colorSpace: 'sRGB', imageBase64: png.toString('base64') };
+    const payload = { port: 9876, sessionId: randomUUID(), commandId: randomUUID(), destination: { kind: 'node', targetId: randomUUID(), expectedImageId: null }, colorSpace: 'sRGB', imageBase64: png.toString('base64') };
     let applies = 0;
     const commandImpl = async (_type, { code }) => {
         const data = extract(code); applies++;
@@ -87,7 +88,7 @@ test('write receipts survive a new bridge instance and changed targets or pixels
 }));
 
 test('lost response retries the identical native command and a changed Blender session is rejected', async () => fixture(async appRoot => {
-    const payload = { sessionId: randomUUID(), commandId: randomUUID(), destination: { kind: 'image', imageId: randomUUID(), expectedRevision: 'a'.repeat(64) }, colorSpace: 'Non-Color', imageBase64: png.toString('base64') };
+    const payload = { port: 9876, sessionId: randomUUID(), commandId: randomUUID(), destination: { kind: 'image', imageId: randomUUID(), expectedRevision: 'a'.repeat(64) }, colorSpace: 'Non-Color', imageBase64: png.toString('base64') };
     const calls = [];
     const bridge = createBlenderBridge({ appRoot, commandImpl: async (_type, { code }) => {
         calls.push(extract(code));
@@ -129,7 +130,7 @@ test('image previews validate identity and PNG dimensions without permitting arb
 }));
 
 test('direct and new-image writes freeze the destination, reject malformed bindings and verify receipts', async () => fixture(async appRoot => {
-    const payload = { sessionId: randomUUID(), commandId: randomUUID(), colorSpace: 'sRGB', imageBase64: png.toString('base64') };
+    const payload = { port: 9876, sessionId: randomUUID(), commandId: randomUUID(), colorSpace: 'sRGB', imageBase64: png.toString('base64') };
     let calls = 0, wrong = false;
     const bridge = createBlenderBridge({ appRoot, commandImpl: async (_type, { code }) => {
         calls++;
@@ -154,4 +155,76 @@ test('direct and new-image writes freeze the destination, reject malformed bindi
     assert.equal((await call(bridge, '/blender/returns', { ...create, destination: { kind: 'new', name: 'changed' } })).status, 409);
     wrong = true;
     assert.equal((await call(bridge, '/blender/returns', { ...create, commandId: randomUUID() })).status, 502);
+}));
+
+test('connection settings validate ports, preserve access checks and survive a new bridge', async () => fixture(async appRoot => {
+    const ports = [];
+    const commandImpl = async (_type, _params, port) => { ports.push(port); return result({ connected: true, sources: [], targets: [], images: [] }); };
+    const bridge = createBlenderBridge({ appRoot, commandImpl });
+    assert.deepEqual((await call(bridge, '/blender/connection')).value, { port: 9876 });
+    for (const port of [0, -1, 65536, 1.5, '9877', null]) assert.equal((await call(bridge, '/blender/connection', { port })).status, 400);
+    assert.equal((await call(bridge, '/blender/connection', { port: 9877 }, { origin: 'https://example.com' })).status, 403);
+    assert.equal((await call(bridge, '/blender/connection', { port: 9877 }, { 'x-infinite-canvas-blender-ui': undefined })).status, 403);
+    assert.deepEqual((await call(bridge, '/blender/connection')).value, { port: 9876 });
+    assert.deepEqual(ports, []);
+    assert.equal((await call(bridge, '/blender/connection', { port: 9877 })).status, 200);
+    const restarted = createBlenderBridge({ appRoot, commandImpl });
+    assert.equal((await call(restarted, '/blender/status')).value.port, 9877);
+    assert.deepEqual(ports, [9877]);
+}));
+
+test('custom port uses the real TCP protocol and reports wrong services or a closed endpoint', async () => fixture(async appRoot => {
+    let invalid = false, commands = 0;
+    const server = createServer(socket => {
+        let text = '';
+        socket.on('data', chunk => {
+            text += chunk.toString();
+            let request;
+            try { request = JSON.parse(text); } catch { return; }
+            commands++;
+            assert.equal(request.type, 'execute_code');
+            assert.equal(extract(request.params.code).operation, 'status');
+            socket.end(JSON.stringify({ status: 'success', result: invalid ? { result: 'not BlenderMCP' } : result({ connected: true, sources: [], targets: [], images: [] }) }));
+        });
+    });
+    await new Promise(resolveListen => server.listen(0, '127.0.0.1', resolveListen));
+    const port = server.address().port;
+    const bridge = createBlenderBridge({ appRoot });
+    try {
+        await call(bridge, '/blender/connection', { port });
+        const connected = await call(bridge, '/blender/status');
+        assert.equal(connected.value.connected, true);
+        assert.equal(connected.value.port, port);
+        invalid = true;
+        assert.equal((await call(bridge, '/blender/status')).status, 502);
+        assert.equal(commands, 2);
+    } finally { await new Promise(resolveClose => server.close(resolveClose)); }
+    const disconnected = await call(bridge, '/blender/status');
+    assert.equal(disconnected.status, 200);
+    assert.equal(disconnected.value.connected, false);
+    assert.match(disconnected.value.error, new RegExp(`127\\.0\\.0\\.1:${port}`));
+}));
+
+test('pending writes cannot be redirected by changing the shared port or command payload', async () => fixture(async appRoot => {
+    const payload = { port: 9876, sessionId: randomUUID(), commandId: randomUUID(), destination: { kind: 'new', name: 'Result' }, colorSpace: 'sRGB', imageBase64: png.toString('base64') };
+    let calls = 0;
+    const bridge = createBlenderBridge({ appRoot, commandImpl: async (_type, { code }, port) => {
+        assert.equal(port, 9876);
+        calls++;
+        if (calls === 1) throw new Error('response lost');
+        const data = extract(code);
+        return result({ ...data, imageId: randomUUID(), imageName: 'Result' });
+    } });
+    assert.equal((await call(bridge, '/blender/returns', payload)).status, 500);
+    await call(bridge, '/blender/connection', { port: 9877 });
+    assert.equal((await call(bridge, '/blender/returns', payload)).status, 409);
+    assert.equal((await call(bridge, '/blender/returns', { ...payload, port: 9877 })).status, 409);
+    assert.equal(calls, 1);
+    await call(bridge, '/blender/connection', { port: 9876 });
+    const receipt = await call(bridge, '/blender/returns', payload);
+    assert.equal(receipt.status, 200);
+    assert.equal(receipt.value.port, 9876);
+    await call(bridge, '/blender/connection', { port: 9877 });
+    assert.deepEqual(await call(bridge, '/blender/returns', payload), receipt);
+    assert.equal(calls, 2);
 }));
