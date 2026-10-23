@@ -13,6 +13,7 @@ export type BlenderLinkMetadata = {
     sourceId?: string;
     writeMode?: BlenderDestination["kind"];
     imageId?: string;
+    imageRevision?: string;
     imageName?: string;
     materialId?: string;
     targetId?: string;

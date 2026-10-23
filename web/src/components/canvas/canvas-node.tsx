@@ -436,7 +436,7 @@ export const CanvasNode = React.memo(function CanvasNode({
             >
                 <div
                     ref={configContentContainerRef}
-                    className={`relative flex h-full w-full justify-center rounded-[inherit] ${data.type === CanvasNodeType.Config ? "items-start" : "items-center"} ${isBatchRoot ? "overflow-visible" : "overflow-hidden"}`}
+                    className={`relative flex h-full w-full justify-center rounded-[inherit] ${data.type === CanvasNodeType.Config ? "items-start" : "items-center"} ${isBatchRoot || data.type === BLENDER_LINK ? "overflow-visible" : "overflow-hidden"}`}
                     style={
                         {
                             background: isGroup ? "transparent" : hasImageContent || hasVideoContent || transparentBg ? "transparent" : theme.node.fill,

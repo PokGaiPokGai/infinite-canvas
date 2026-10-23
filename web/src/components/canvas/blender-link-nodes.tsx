@@ -49,6 +49,70 @@ async function captureBlenderRead(ctx: CanvasNodeContext, link: BlenderLinkMetad
     finally { active.delete(key); }
 }
 
+async function sendBlenderWrite(ctx: CanvasNodeContext) {
+    const node = ctx.getNode(ctx.node.id);
+    const link = node?.metadata?.blender;
+    const key = `${ctx.projectId}:${ctx.node.id}`;
+    const storageKey = `write:${key}`;
+    if (!node || link?.mode !== "write" || active.has(key) || useBlenderConnectionStore.getState().saving) return;
+    const input = blenderWriteInput(node, ctx.getNodes(), ctx.getConnections());
+    if (!link.pending && (!input || link.writtenInputKey === input.key)) return;
+    active.add(key);
+    ctx.updateMetadata({ status: "loading", errorDetails: undefined });
+    try {
+        let pending = link.pending;
+        let metadata = node.metadata;
+        if (!pending && input) {
+            const status = await getBlenderStatus();
+            if (!status.connected || !status.sessionId) throw new Error(status.error || "BlenderMCP 未连接，请在小面板检查连接。");
+            if (status.sessionId !== link.sessionId) throw new Error("Blender 工程已变化，请在小面板重新选择写回目标。");
+            const writeMode = link.writeMode || "image";
+            const image = status.images.find(item => item.id === link.imageId);
+            const target = status.targets.find(item => item.id === link.targetId && item.materialId === link.materialId);
+            const destination: BlenderDestination | null = writeMode === "image" ? image && link.imageRevision ? { kind: "image", imageId: image.id, expectedRevision: link.imageRevision } : null
+                : writeMode === "new" ? (link.imageName ?? "Canvas Result").trim() ? { kind: "new", name: (link.imageName ?? "Canvas Result").trim() } : null
+                : target ? { kind: "node", targetId: target.id, expectedImageId: target.imageId } : null;
+            if (!destination) throw new Error("写回目标尚未就绪，请在小面板选择或刷新目标。");
+            const dataUrl = await asPng(await imageToDataUrl({ storageKey: input.storageKey, url: input.url }));
+            const frozen = await uploadImage(await (await fetch(dataUrl)).blob());
+            if (!frozen.storageKey) throw new Error("无法保存待写回原图。");
+            if (!ctx.getNode(ctx.node.id)) return;
+            pending = { commandId: crypto.randomUUID(), sessionId: status.sessionId, port: status.port, destination, colorSpace: link.colorSpace || "sRGB", storageKey: frozen.storageKey, inputKey: input.key };
+            metadata = { ...imageMetadata(frozen), status: "loading", blender: { ...link, pending, receipt: undefined, writtenInputKey: undefined } };
+            // Keep the frozen command recoverable even when the panel is closed.
+            await ctx.storage.set(storageKey, metadata);
+            ctx.updateMetadata(metadata);
+        }
+        if (!pending) return;
+        const dataUrl = await imageToDataUrl({ storageKey: pending.storageKey });
+        const receipt = await writeBlenderTexture(pending, dataUrl.replace(/^data:image\/png;base64,/, ""));
+        let imageRevision: string | undefined;
+        if (pending.destination.kind === "image") {
+            try { imageRevision = (await getBlenderImagePreview(pending.sessionId, pending.destination.imageId)).revision; }
+            catch { /* The write succeeded; refresh the target before the next write. */ }
+        }
+        const completed: CanvasNodeMetadata = { ...metadata, status: "success", errorDetails: undefined, blender: { ...link, imageRevision, pending: undefined, receipt, writtenInputKey: pending.inputKey } };
+        await ctx.storage.remove(storageKey);
+        if (ctx.getNode(ctx.node.id)) ctx.updateMetadata(completed);
+    } catch (error) {
+        if (ctx.getNode(ctx.node.id)) { ctx.updateMetadata({ status: "error", errorDetails: textOf(error) }); ctx.openPanel(); }
+    } finally { active.delete(key); }
+}
+
+function useWriteRecovery(ctx: CanvasNodeContext) {
+    const key = `${ctx.projectId}:${ctx.node.id}`;
+    const storageKey = `write:${key}`;
+    const [recovering, setRecovering] = useState(true);
+    useEffect(() => {
+        const controller = new AbortController();
+        void ctx.storage.get<CanvasNodeMetadata>(storageKey).then(saved => {
+            if (!controller.signal.aborted && saved?.blender?.pending && !ctx.getNode(ctx.node.id)?.metadata?.blender?.pending) ctx.updateMetadata(saved);
+        }).catch(error => { if (!controller.signal.aborted) ctx.updateMetadata({ errorDetails: textOf(error) }); }).finally(() => { if (!controller.signal.aborted) setRecovering(false); });
+        return () => controller.abort();
+    }, [key]);
+    return recovering;
+}
+
 function LinkContent({ ctx }: { ctx: CanvasNodeContext }) {
     const port = useBlenderConnectionStore(state => state.port);
     const savingConnection = useBlenderConnectionStore(state => state.saving);
@@ -57,15 +121,20 @@ function LinkContent({ ctx }: { ctx: CanvasNodeContext }) {
     const input = link.mode === "write" ? blenderWriteInput(ctx.node, ctx.getNodes(), ctx.getConnections()) : null;
     const preview = link.mode === "write" && !link.pending ? input?.url || ctx.node.metadata?.content : ctx.node.metadata?.content;
     const key = `${ctx.projectId}:${ctx.node.id}`;
+    const recovering = useWriteRecovery(ctx);
     const reading = link.mode === "read" && ctx.node.metadata?.status === "loading" && active.has(key);
-    const locked = reading || savingConnection || !!link.pending || active.has(key);
+    const locked = recovering || reading || savingConnection || !!link.pending || active.has(key);
+    const writeMode = link.writeMode || "image";
+    const targetReady = !!link.sessionId && (writeMode === "image" ? !!link.imageId && !!link.imageRevision : writeMode === "new" ? !!(link.imageName ?? "Canvas Result").trim() : !!link.materialId && !!link.targetId);
+    const written = !!input && link.writtenInputKey === input.key;
+    const writing = link.mode === "write" && active.has(key);
     const changeMode = (mode: BlenderLinkMetadata["mode"]) => {
         if (locked || mode === link.mode) return;
         const next = { ...link, mode, snapshot: undefined, receipt: undefined, writtenInputKey: undefined };
         ctx.updateMetadata({ ...emptyPreview, blender: next });
         if (mode === "read") void captureBlenderRead(ctx, next);
     };
-    return <div className="relative h-full w-full overflow-hidden rounded-[inherit]" style={{ background: ctx.theme.node.panel, color: ctx.theme.node.text }}>
+    return <><div className="relative h-full w-full overflow-hidden rounded-[inherit]" style={{ background: ctx.theme.node.panel, color: ctx.theme.node.text }}>
         {preview ? <img src={preview} alt={link.mode === "read" ? "Blender 画面快照" : "写回 Blender 的贴图"} draggable={false} className="pointer-events-none absolute inset-0 h-full w-full object-contain" onLoad={event => fitPreview(ctx, event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)} /> : <div className="absolute inset-0 flex items-center justify-center px-6 pt-10 text-center text-xs opacity-60">{link.mode === "read" ? "点击节点，选择 Blender 视口或最近渲染结果" : "连接图片，点击节点选择目标贴图或新建图片"}</div>}
         <div className="pointer-events-none absolute inset-x-3 top-3 flex items-start justify-between" data-canvas-no-zoom>
             <div className="grid size-8 shrink-0 place-items-center rounded-lg backdrop-blur-sm" style={{ background: ctx.theme.toolbar.panel }} title="Blender Link"><img src="/icons/blender.svg" alt="Blender" className="size-5" /></div>
@@ -77,7 +146,11 @@ function LinkContent({ ctx }: { ctx: CanvasNodeContext }) {
             <span className="pointer-events-none select-none text-[11px] tabular-nums opacity-40" title={port === null ? "正在读取连接设置" : `BlenderMCP · 127.0.0.1:${port}`}>{port ?? "—"}</span>
             {link.mode === "read" ? <button type="button" aria-label="读取当前画面" aria-busy={reading} title={!link.sessionId || !link.sourceId ? "先在控制面板选择视口" : reading ? "正在读取当前画面…" : "读取当前画面"} disabled={locked || !link.sessionId || !link.sourceId} className="grid size-8 place-items-center rounded-md hover:bg-black/5 dark:hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40" onMouseDown={event => event.stopPropagation()} onPointerDown={event => event.stopPropagation()} onClick={event => { event.stopPropagation(); void captureBlenderRead(ctx, link); }}><RefreshCw className={`size-4 ${reading ? "motion-safe:animate-spin" : ""}`} /></button> : null}
         </div>
-    </div>;
+    </div>
+        {link.mode === "write" ? <div data-canvas-no-zoom className={`absolute left-1/2 top-full z-20 -translate-x-1/2 pt-3 transition-opacity ${ctx.isSelected ? "visible opacity-100" : "invisible pointer-events-none opacity-0 group-hover/node:visible group-hover/node:pointer-events-auto group-hover/node:opacity-100"}`} onPointerDown={event => event.stopPropagation()} onMouseDown={event => event.stopPropagation()} onClick={event => event.stopPropagation()}>
+            <button type="button" className={`${buttonClass} whitespace-nowrap px-4 py-2`} style={{ color: ctx.theme.node.text }} disabled={locked || !input || !targetReady || written} aria-busy={writing} title={link.pending ? "在小面板查询或重试待确认写回" : !input ? "先连接一张已完成的图片" : !targetReady ? "先在小面板配置写回目标" : undefined} onClick={() => void sendBlenderWrite(ctx)}>{writing ? "正在写回…" : link.pending ? "等待确认写回" : written ? "当前图片已写回" : writeMode === "new" ? "新建并写入" : "写回当前图片"}</button>
+        </div> : null}
+    </>;
 }
 
 function LinkPanel({ ctx, onClose }: { ctx: CanvasNodeContext; onClose: () => void }) {
@@ -86,8 +159,6 @@ function LinkPanel({ ctx, onClose }: { ctx: CanvasNodeContext; onClose: () => vo
     const link: BlenderLinkMetadata = ctx.node.metadata?.blender || { mode: "read" };
     const [status, setStatus] = useState<BlenderStatus | null>(null);
     const [refreshing, setRefreshing] = useState(false);
-    const [recovering, setRecovering] = useState(true);
-    const [working, setWorking] = useState(false);
     const [connectionError, setConnectionError] = useState("");
     const [imagePreview, setImagePreview] = useState<{ status: BlenderStatus; value: BlenderImagePreview } | null>(null);
     const [previewError, setPreviewError] = useState("");
@@ -99,7 +170,8 @@ function LinkPanel({ ctx, onClose }: { ctx: CanvasNodeContext; onClose: () => vo
     useEffect(() => { if (connectionPort !== null) setPortDraft(String(connectionPort)); }, [connectionPort]);
     const key = `${ctx.projectId}:${ctx.node.id}`;
     const storageKey = `write:${key}`;
-    const busy = working || savingConnection || active.has(key) || recovering;
+    const recovering = useWriteRecovery(ctx);
+    const busy = recovering || savingConnection || active.has(key);
     const locked = busy || !!link.pending;
     const connected = status?.connected === true;
     const sameSession = connected && status.sessionId === link.sessionId;
@@ -133,14 +205,7 @@ function LinkPanel({ ctx, onClose }: { ctx: CanvasNodeContext; onClose: () => vo
         setStatus(null);
         void refresh(controller.signal);
         return () => controller.abort();
-    }, [key, connectionRevision]);
-    useEffect(() => {
-        const controller = new AbortController();
-        void ctx.storage.get<CanvasNodeMetadata>(storageKey).then(saved => {
-            if (!controller.signal.aborted && saved?.blender?.pending && !ctx.getNode(ctx.node.id)?.metadata?.blender?.pending) ctx.updateMetadata(saved);
-        }).catch(error => { if (!controller.signal.aborted) setConnectionError(textOf(error)); }).finally(() => { if (!controller.signal.aborted) setRecovering(false); });
-        return () => controller.abort();
-    }, [key]);
+    }, [key, connectionRevision, link.receipt?.commandId]);
     const connect = async () => {
         setConnectionError("");
         try { await useBlenderConnectionStore.getState().save(Number(portDraft)); }
@@ -151,43 +216,19 @@ function LinkPanel({ ctx, onClose }: { ctx: CanvasNodeContext; onClose: () => vo
         if (link.mode !== "write" || writeMode !== "image" || !image || !status?.sessionId) return;
         const controller = new AbortController();
         void getBlenderImagePreview(status.sessionId, image.id, controller.signal)
-            .then(value => { if (!controller.signal.aborted) setImagePreview({ status, value }); })
+            .then(value => {
+                if (controller.signal.aborted) return;
+                setImagePreview({ status, value });
+                const current = ctx.getNode(ctx.node.id)?.metadata?.blender;
+                if (current?.mode === "write" && current.sessionId === status.sessionId && current.imageId === value.imageId && current.imageRevision !== value.revision) ctx.updateMetadata({ blender: { ...current, imageRevision: value.revision } });
+            })
             .catch(error => { if (!controller.signal.aborted) setPreviewError(textOf(error)); });
         return () => controller.abort();
     }, [status, link.mode, writeMode, image?.id]);
     const patch = (value: Partial<BlenderLinkMetadata>) => {
-        const next = { ...link, ...value, snapshot: undefined, receipt: undefined, writtenInputKey: undefined };
+        const next = { ...link, ...value, imageRevision: value.imageId !== undefined || value.sessionId !== undefined || value.writeMode !== undefined ? undefined : link.imageRevision, snapshot: undefined, receipt: undefined, writtenInputKey: undefined };
         ctx.updateMetadata({ ...emptyPreview, blender: next });
         return next;
-    };
-    const write = async () => {
-        if (active.has(key)) return;
-        if (!link.pending && (!input || !destination || !status?.sessionId || refreshing)) return;
-        active.add(key); setWorking(true);
-        ctx.updateMetadata({ errorDetails: undefined });
-        try {
-            let pending = link.pending;
-            let metadata = ctx.getNode(ctx.node.id)?.metadata;
-            if (!pending && input && destination && status?.sessionId) {
-                const dataUrl = await asPng(await imageToDataUrl({ storageKey: input.storageKey, url: input.url }));
-                const frozen = await uploadImage(await (await fetch(dataUrl)).blob());
-                if (!frozen.storageKey) throw new Error("无法保存待写回原图。");
-                pending = { commandId: crypto.randomUUID(), sessionId: status.sessionId, port: status.port, destination, colorSpace: link.colorSpace || "sRGB", storageKey: frozen.storageKey, inputKey: input.key };
-                metadata = { ...imageMetadata(frozen), status: "loading", blender: { ...link, pending, receipt: undefined, writtenInputKey: undefined } };
-                // Persist the exact command before submitting it. A lost response can only
-                // be retried with the same image, target and command, including after reload.
-                await ctx.storage.set(storageKey, metadata);
-                ctx.updateMetadata(metadata);
-            }
-            if (!pending) return;
-            const dataUrl = await imageToDataUrl({ storageKey: pending.storageKey });
-            const receipt = await writeBlenderTexture(pending, dataUrl.replace(/^data:image\/png;base64,/, ""));
-            const completed: CanvasNodeMetadata = { ...metadata, status: "success", errorDetails: undefined, blender: { ...link, pending: undefined, receipt, writtenInputKey: pending.inputKey } };
-            await ctx.storage.remove(storageKey);
-            if (ctx.getNode(ctx.node.id)) ctx.updateMetadata(completed);
-            await refresh();
-        } catch (error) { ctx.updateMetadata({ status: "error", errorDetails: textOf(error) }); }
-        finally { active.delete(key); setWorking(false); }
     };
     return <div ref={panelRef} data-canvas-no-zoom className="flex min-h-0 flex-col text-sm" style={{ color: ctx.theme.node.text, maxHeight: `calc(100dvh - ${Math.max(12, panelRect?.top ?? 12)}px - 80px)` }}>
         <header className="flex shrink-0 items-center justify-between border-b px-4 py-3" style={{ borderColor: ctx.theme.node.stroke }}><span className="font-medium">Blender Link · {link.mode === "read" ? "读取" : "写回"}</span><button type="button" aria-label="关闭控制面板" className={buttonClass} onClick={onClose}><X className="size-4" /></button></header>
@@ -218,11 +259,10 @@ function LinkPanel({ ctx, onClose }: { ctx: CanvasNodeContext; onClose: () => vo
                 {destination ? <>
                     <label className="block space-y-1.5"><span>贴图色彩用途</span><select aria-label="贴图色彩用途" className={fieldClass} style={controlStyle} value={link.colorSpace || "sRGB"} disabled={locked} onChange={event => patch({ colorSpace: event.target.value as "sRGB" | "Non-Color" })}><option value="sRGB">颜色（sRGB）</option><option value="Non-Color">数据（Non-Color）</option></select></label>
                     <p className="text-xs leading-5 opacity-60">按输入图片尺寸写入。保存 .blend 后保留，磁盘原文件不变。</p>
-                    {!link.pending ? <button className={`${buttonClass} w-full`} disabled={busy || refreshing || !input || link.writtenInputKey === input.key} onClick={() => void write()}>{busy ? "正在写回…" : input && link.writtenInputKey === input.key ? "当前图片已写回" : writeMode === "new" ? "新建并写入" : "写回当前图片"}</button> : null}
                 </> : null}
                 {!link.pending && !input ? <p className="text-xs opacity-60">连接一张已完成的图片；多张输入时请只保留一条有效连线。</p> : null}
             </> : null}
-            {link.mode === "write" && link.pending ? <div className="space-y-2 text-xs"><p>有一条待确认写回，端口 {link.pending.port}；重试会使用冻结的原图和原目标。放弃前请先检查 Blender 中是否已经写入。</p><div className="flex gap-2"><button className={buttonClass} disabled={busy} onClick={() => void write()}>查询／重试同一指令</button><button className={buttonClass} disabled={busy} onClick={() => void ctx.storage.remove(storageKey).then(() => ctx.updateMetadata({ ...emptyPreview, blender: { ...link, pending: undefined, receipt: undefined, writtenInputKey: undefined } })).catch(error => ctx.updateMetadata({ errorDetails: textOf(error) }))}>放弃待确认写回</button></div></div> : null}
+            {link.mode === "write" && link.pending ? <div className="space-y-2 text-xs"><p>有一条待确认写回，端口 {link.pending.port}；重试会使用冻结的原图和原目标。放弃前请先检查 Blender 中是否已经写入。</p><div className="flex gap-2"><button className={buttonClass} disabled={busy} onClick={() => void sendBlenderWrite(ctx)}>查询／重试同一指令</button><button className={buttonClass} disabled={busy} onClick={() => void ctx.storage.remove(storageKey).then(() => ctx.updateMetadata({ ...emptyPreview, blender: { ...link, pending: undefined, receipt: undefined, writtenInputKey: undefined } })).catch(error => ctx.updateMetadata({ errorDetails: textOf(error) }))}>放弃待确认写回</button></div></div> : null}
             {ctx.node.metadata?.errorDetails ? <p role="alert" className="break-words text-xs leading-5">{ctx.node.metadata.errorDetails}</p> : null}
             {link.snapshot && link.mode === "read" ? <p className="break-words text-xs opacity-60">已读取：{link.snapshot.sourceName} · {link.snapshot.width} × {link.snapshot.height}</p> : null}
             {link.receipt && link.mode === "write" ? <p className="break-words text-xs opacity-60">已写回：{link.receipt.imageName}</p> : null}
