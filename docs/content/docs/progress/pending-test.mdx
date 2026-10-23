@@ -5,6 +5,8 @@ description: Implemented changes that still need manual verification
 
 # Pending Tests
 
+- Canvas home navigation: Home is now a visible icon-and-text button at the top left, before the menu, using the existing home action. The duplicate menu entry is removed. An independent in-app browser tab confirmed the button is visible without opening the menu and a single click navigates to `/`; no console warnings or errors were recorded. Other viewport sizes remain unverified.
+
 - Krita/storage decoupling: node registration and existing-node recognition no longer depend on the shared-storage flag. Verified on 2026-10-23 in a temporary standard web preview: new canvas -> extension nodes -> Krita Link -> panel showed Krita disconnected with a readable missing-bridge message. In the shared branch preview, an existing Krita node showed connected. Both pages had no console warnings/errors; the temporary server was stopped and no real artwork was modified. Real image reads, write-back, and generation still need user acceptance.
 
 - Canvas UX launcher: the double-click entry should start this branch on 3010 using the original shared database and Krita/generation services, reusing its process on subsequent launches. Verified on 2026-10-23: branch identity, matching storage revisions with 3000, connected Krita status and document listing, and the original canvas library plus connected Krita panel in the browser. No image reads, generation, or write-back were triggered. Foreign-Origin requests to all three bridge routes and writes without Origin returned 403. Switching the former standalone 3010 storage reported one difference with the original copy retained. Full VBS/default-browser behavior and real image/generation workflows still need manual acceptance.
