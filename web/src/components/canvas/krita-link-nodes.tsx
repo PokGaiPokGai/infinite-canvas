@@ -326,21 +326,30 @@ function SourceContent({ ctx }: { ctx: CanvasNodeContext }) {
 }
 
 function AutoReadDelay({ ctx, link }: { ctx: CanvasNodeContext; link: KritaLinkMetadata }) {
+    const inputId = useId();
     const seconds = kritaAutoReadDelay(link.autoReadDelaySeconds);
     const [draft, setDraft] = useState(String(seconds));
     const [invalid, setInvalid] = useState(false);
     useEffect(() => { setDraft(String(seconds)); setInvalid(false); }, [seconds]);
-    const commit = () => {
-        const value = Number(draft);
-        if (!draft.trim() || !Number.isFinite(value) || value <= 0) { setInvalid(true); return; }
+    const parsed = Number(draft);
+    const current = draft.trim() && Number.isFinite(parsed) && parsed > 0 ? parsed : seconds;
+    const commit = (next = draft) => {
+        const value = Number(next);
+        if (!next.trim() || !Number.isFinite(value) || value <= 0) { setInvalid(true); return; }
+        setDraft(String(value));
         setInvalid(false);
-        const current = ctx.getNode(ctx.node.id)?.metadata?.krita;
-        if (current?.kind === "link" && value !== kritaAutoReadDelay(current.autoReadDelaySeconds)) ctx.updateMetadata({ krita: { ...current, autoReadDelaySeconds: value } });
+        const latest = ctx.getNode(ctx.node.id)?.metadata?.krita;
+        if (latest?.kind === "link" && value !== kritaAutoReadDelay(latest.autoReadDelaySeconds)) ctx.updateMetadata({ krita: { ...latest, autoReadDelaySeconds: value } });
     };
-    return <label className="block space-y-1.5"><span>Auto 停笔等待（秒）</span>
-        <input type="number" step="any" aria-label="Auto 停笔等待（秒）" aria-invalid={invalid} title="停止绘画后等待此时间再刷新" className={fieldClass} style={controlStyle(ctx)} value={draft} onChange={(event) => { setDraft(event.target.value); setInvalid(false); }} onBlur={commit} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); } }} />
+    const stepClass = "grid h-full w-10 shrink-0 place-items-center bg-transparent text-lg transition hover:opacity-60 disabled:cursor-not-allowed disabled:opacity-30";
+    return <div className="space-y-1.5"><label htmlFor={inputId}>Auto 停笔等待（秒）</label>
+        <div className="flex h-9 w-full items-center overflow-hidden rounded-full border text-sm focus-within:ring-1" style={controlStyle(ctx)}>
+            <button type="button" aria-label="减少停笔等待 1 秒" disabled={current <= 1} className={stepClass} onMouseDown={(event) => event.preventDefault()} onClick={() => commit(String(current - 1))}>−</button>
+            <input id={inputId} type="number" step="any" aria-invalid={invalid} title="停止绘画后等待此时间再刷新" className="h-full min-w-0 flex-1 border-x bg-transparent px-2 text-center outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" style={{ borderColor: ctx.theme.node.stroke }} value={draft} onChange={(event) => { setDraft(event.target.value); setInvalid(false); }} onBlur={() => commit()} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); } }} />
+            <button type="button" aria-label="增加停笔等待 1 秒" className={stepClass} onMouseDown={(event) => event.preventDefault()} onClick={() => commit(String(current + 1))}>+</button>
+        </div>
         {invalid ? <span role="alert" className="block text-xs">请输入大于 0 的秒数</span> : null}
-    </label>;
+    </div>;
 }
 
 function SourcePanel({ ctx, onClose }: { ctx: CanvasNodeContext; onClose: () => void }) {
