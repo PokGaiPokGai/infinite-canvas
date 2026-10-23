@@ -274,3 +274,22 @@ test('closing the browser watch aborts its native long poll', async (t) => {
         { status: 200, value: { released: true } });
     await claim(bridge, otherClientId, true);
 });
+
+
+test('watch forwards positive per-node idle delays and rejects invalid values before native access', async (t) => {
+    const clientId = randomUUID(), sessionId = randomUUID();
+    const searches = [];
+    const { bridge } = await setup(t, async (url) => {
+        searches.push(new URL(url).search);
+        return Response.json({ sessionId, revision: 1, changed: true });
+    });
+    await claim(bridge, clientId, true);
+    for (const seconds of ['0.25', '2', '5', '120']) {
+        assert.equal((await call(bridge, `${watchPath(0, clientId)}&idleSeconds=${seconds}`)).status, 200);
+    }
+    assert.deepEqual(searches, ['?after=0&idleSeconds=0.25', '?after=0&idleSeconds=2', '?after=0&idleSeconds=5', '?after=0&idleSeconds=120']);
+    for (const seconds of ['', '0', '-1', 'NaN', 'Infinity', 'abc', '2&idleSeconds=3']) {
+        assert.equal((await call(bridge, `${watchPath(0, clientId)}&idleSeconds=${seconds}`)).status, 400);
+    }
+    assert.equal(searches.length, 4);
+});

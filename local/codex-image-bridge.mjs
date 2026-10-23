@@ -12,7 +12,7 @@ import { homedir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const appRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const appRoot = process.env.INFINITE_CANVAS_APP_ROOT ? resolve(process.env.INFINITE_CANVAS_APP_ROOT) : resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const jobsRoot = join(appRoot, '.local', 'codex-image', 'jobs');
 const textJobsRoot = join(appRoot, '.local', 'codex-text', 'jobs');
 const generatedRoot = join(process.env.CODEX_HOME || join(homedir(), '.codex'), 'generated_images');
@@ -20,7 +20,7 @@ const cliJs = process.env.CODEX_CLI_JS || join(process.env.APPDATA || '', 'npm',
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const active = new Map();
 const activeText = new Map();
-const sharedStorage = createSharedStorage();
+const sharedStorage = createSharedStorage({ dataDirectory: join(appRoot, '.local', 'app-data') });
 const kritaBridge = createKritaBridge({ appRoot, ensureComfy: createEnsureComfy(appRoot) });
 const blenderBridge = createBlenderBridge({ appRoot });
 const allowedOrigins = new Set(['http://127.0.0.1:3000']);

@@ -647,7 +647,7 @@ export function createKritaBridge({ appRoot = resolve(dirname(fileURLToPath(impo
                             }) };
                     });
                     json(response, 200, { connected: true, version: 1, sessionId: value.sessionId,
-                        ...(value.activityRevision === undefined ? {} : { activityRevision: value.activityRevision }), documents });
+                        ...(value.activityRevision === undefined ? {} : { activityRevision: value.activityRevision }), ...(value.autoReadDelayVersion === 1 ? { autoReadDelayVersion: 1 } : {}), documents });
                 } catch (error) { json(response, 200, { connected: false, documents: [], error: error.message }); }
                 return true;
             }
@@ -693,8 +693,10 @@ export function createKritaBridge({ appRoot = resolve(dirname(fileURLToPath(impo
             if (request.method === 'GET' && path === '/krita/watch') {
                 const query = new URL(request.url, 'http://127.0.0.1:3002').searchParams;
                 const values = query.getAll('after'), projectIds = query.getAll('projectId'), clientIds = query.getAll('clientId');
+                const delays = query.getAll('idleSeconds');
+                if (delays.length > 1 || (delays.length === 1 && (!Number.isFinite(Number(delays[0])) || Number(delays[0]) <= 0))) throw new LinkError(400, '停笔等待时间必须为大于 0 的秒数。');
                 if (values.length !== 1 || projectIds.length !== 1 || clientIds.length !== 1 ||
-                    [...query.keys()].some((key) => !['after', 'projectId', 'clientId'].includes(key)) ||
+                    [...query.keys()].some((key) => !['after', 'projectId', 'clientId', 'idleSeconds'].includes(key)) ||
                     !/^(0|[1-9][0-9]*)$/.test(values[0]) || !Number.isSafeInteger(Number(values[0]))) {
                     throw new LinkError(400, 'watch 版本号无效。');
                 }
@@ -716,7 +718,7 @@ export function createKritaBridge({ appRoot = resolve(dirname(fileURLToPath(impo
                 const cancel = () => { controller.abort(); finish(); };
                 response.once('close', cancel);
                 try {
-                    const value = await native(`/watch?after=${values[0]}`, undefined, controller.signal);
+                    const value = await native(`/watch?after=${values[0]}${delays.length ? `&idleSeconds=${Number(delays[0])}` : ""}`, undefined, controller.signal);
                     if (!object(value) || !validId(value.sessionId) || !Number.isSafeInteger(value.revision) ||
                         value.revision < 0 || value.changed !== (value.revision !== Number(values[0]))) {
                         throw new LinkError(502, 'Krita Auto 事件信息无效。');

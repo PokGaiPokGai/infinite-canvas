@@ -1,6 +1,7 @@
 import { useEffect, useSyncExternalStore, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import { flushSync } from "react-dom";
 import { imageMetadata } from "@/lib/canvas/canvas-node-factory";
+import { kritaAutoReadDelay } from "@/lib/canvas/krita-auto-read";
 import { KRITA_LINK } from "@/lib/canvas/krita-link";
 import { beginKritaRead, waitForKritaRead } from "@/lib/canvas/krita-read-lock";
 import { getSharedStorageStatus, subscribeSharedStorage } from "@/lib/shared-storage";
@@ -36,7 +37,6 @@ export function useKritaAutoRead({ projectId, projectLoaded, bindings, nodesRef,
         let watchController: AbortController | undefined;
         let retryTimer: ReturnType<typeof setTimeout> | undefined;
         let heartbeatPending = false;
-        let capturePending = true;
         const storageReady = () => {
             const status = getSharedStorageStatus();
             return !status.remoteChanged && !status.error;
@@ -44,7 +44,6 @@ export function useKritaAutoRead({ projectId, projectLoaded, bindings, nodesRef,
         const loseLease = (currentLease: string) => {
             if (leaseId !== currentLease) return;
             leaseId = undefined;
-            capturePending = true;
             captureController?.abort();
             watchController?.abort();
         };
@@ -57,7 +56,7 @@ export function useKritaAutoRead({ projectId, projectLoaded, bindings, nodesRef,
                 .catch(() => loseLease(currentLease))
                 .finally(() => { heartbeatPending = false; });
         }, 30_000);
-        const waitRetry = () => new Promise<void>((resolve) => {
+        const waitRetry = () => signal.aborted ? Promise.resolve() : new Promise<void>((resolve) => {
             const finish = () => { if (retryTimer) clearTimeout(retryTimer); signal.removeEventListener("abort", finish); resolve(); };
             retryTimer = setTimeout(finish, retryMs);
             signal.addEventListener("abort", finish, { once: true });
@@ -83,8 +82,8 @@ export function useKritaAutoRead({ projectId, projectLoaded, bindings, nodesRef,
             const link = autoLink(current);
             return !signal.aborted && storageReady() && leaseId === captureLease && link?.documentId === documentId && link.layerId === layerId && link.snapshot?.id === snapshotId;
         };
-        const capture = async (status: KritaStatus, captureLease: string, captureSignal: AbortSignal) => {
-            for (const node of nodesRef.current.filter((item) => autoLink(item))) {
+        const capture = async (status: KritaStatus, captureLease: string, captureSignal: AbortSignal, nodeId?: string) => {
+            for (const node of nodesRef.current.filter((item) => autoLink(item) && (!nodeId || item.id === nodeId))) {
                 if (signal.aborted || captureSignal.aborted || !storageReady() || leaseId !== captureLease) return;
                 const link = autoLink(node)!;
                 const documentId = link.documentId!;
@@ -135,9 +134,8 @@ export function useKritaAutoRead({ projectId, projectLoaded, bindings, nodesRef,
             }
         };
         const run = async () => {
-            let revision = 0;
-            let sessionId = "";
             while (!signal.aborted) {
+                let session: AbortController | undefined;
                 try {
                     if (!storageReady()) return;
                     const claim = await claimKritaAuto(projectId, clientId);
@@ -145,41 +143,51 @@ export function useKritaAutoRead({ projectId, projectLoaded, bindings, nodesRef,
                         if (claim.leader && claim.leaseId) void releaseKritaAuto(projectId, clientId, claim.leaseId).catch(() => undefined);
                         return;
                     }
-                    if (!claim.leader || !claim.leaseId) { leaseId = undefined; capturePending = true; await waitRetry(); continue; }
-                    leaseId = claim.leaseId;
-                    if (capturePending) {
-                        const status = await getKritaStatus(signal);
-                        if (!status.connected || !status.sessionId) throw new Error(status.error || "Krita 未连接，请打开 Krita 后重试。");
-                        if (sessionId !== status.sessionId) { sessionId = status.sessionId; revision = status.activityRevision ?? 0; }
-                        const captureRequest = new AbortController();
-                        captureController = captureRequest;
-                        try { await capture(status, claim.leaseId, captureRequest.signal); }
-                        finally { if (captureController === captureRequest) captureController = undefined; }
-                        if (leaseId !== claim.leaseId) { capturePending = true; await waitRetry(); continue; }
-                        capturePending = false;
-                    }
-                    if (signal.aborted) return;
-                    if (!storageReady()) return;
-                    const watch = new AbortController();
-                    watchController = watch;
-                    let activity;
-                    try { activity = await waitKritaActivity(revision, projectId, clientId, watch.signal); }
-                    finally { if (watchController === watch) watchController = undefined; }
-                    if ("standby" in activity) { leaseId = undefined; capturePending = true; await waitRetry(); continue; }
-                    if (activity.sessionId !== sessionId) { sessionId = activity.sessionId; revision = 0; capturePending = true; continue; }
-                    revision = activity.revision;
-                    if (activity.changed) capturePending = true;
+                    if (!claim.leader || !claim.leaseId) { leaseId = undefined; await waitRetry(); continue; }
+                    const currentLease = claim.leaseId;
+                    leaseId = currentLease;
+                    session = new AbortController();
+                    captureController = watchController = session;
+                    const captureSignal = session.signal;
+                    const status = await getKritaStatus(captureSignal);
+                    if (!status.connected || !status.sessionId) throw new Error(status.error || "Krita 未连接，请打开 Krita 后重试。");
+                    await capture(status, currentLease, captureSignal);
+                    let queue = Promise.resolve();
+                    // One watch per node allows independent delays; image reads remain sequential.
+                    await Promise.all(nodesRef.current.filter((node) => autoLink(node)).map(async (node) => {
+                        let revision = status.activityRevision ?? 0;
+                        let watchSession = status.sessionId;
+                        const idleSeconds = kritaAutoReadDelay(autoLink(node)!.autoReadDelaySeconds);
+                        if (idleSeconds !== 2 && status.autoReadDelayVersion !== 1) throw new Error("自定义停笔等待需要更新本机桥接与 Krita 连接插件，请更新并重新载入后重试。");
+                        while (!signal.aborted && !captureSignal.aborted && storageReady() && leaseId === currentLease) {
+                            const activity = await waitKritaActivity(revision, projectId, clientId, captureSignal, idleSeconds);
+                            if ("standby" in activity) { loseLease(currentLease); return; }
+                            revision = activity.revision;
+                            if (!activity.changed && activity.sessionId === watchSession) continue;
+                            const latest = await getKritaStatus(captureSignal);
+                            if (!latest.connected || !latest.sessionId) throw new Error(latest.error || "Krita 未连接，请打开 Krita 后重试。");
+                            if (latest.sessionId !== activity.sessionId) revision = latest.activityRevision ?? 0;
+                            watchSession = latest.sessionId;
+                            queue = queue.then(() => capture(latest, currentLease, captureSignal, node.id));
+                            await queue;
+                        }
+                    }));
                 } catch (error) {
+                    session?.abort();
                     if (signal.aborted) return;
-                    if (!leaseId) { capturePending = true; await waitRetry(); continue; }
-                    const message = `Auto 读取：${error instanceof Error ? error.message : "Krita 连接暂时不可用。"}`;
-                    nodesRef.current.forEach((node) => {
-                        const link = autoLink(node);
-                        if (link) patchError(node.id, link.documentId!, link.layerId, message);
-                    });
-                    capturePending = true;
-                    await waitRetry();
+                    if (leaseId) {
+                        const message = `Auto 读取：${error instanceof Error ? error.message : "Krita 连接暂时不可用。"}`;
+                        nodesRef.current.forEach((node) => {
+                            const link = autoLink(node);
+                            if (link) patchError(node.id, link.documentId!, link.layerId, message);
+                        });
+                    }
+                } finally {
+                    session?.abort();
+                    if (captureController === session) captureController = undefined;
+                    if (watchController === session) watchController = undefined;
                 }
+                await waitRetry();
             }
         };
         void run();

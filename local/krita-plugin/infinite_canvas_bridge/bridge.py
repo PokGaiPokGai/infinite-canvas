@@ -8,20 +8,23 @@ import json
 import os
 import re
 import threading
+import time
+from math import isfinite
+from urllib.parse import parse_qs, urlsplit
 import uuid
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from krita import Extension, Krita
-from PyQt5.QtCore import QByteArray, QBuffer, QCoreApplication, QEvent, QIODevice, QObject, QThread, QTimer, Qt, QUuid, pyqtSignal, pyqtSlot
+from PyQt5.QtCore import QByteArray, QBuffer, QCoreApplication, QEvent, QIODevice, QObject, QThread, Qt, QUuid, pyqtSignal, pyqtSlot
 from PyQt5.QtGui import QColorSpace, QImage
 
 
 PROFILE = "sRGB-elle-V2-srgbtrc.icc"
 GRAY_PROFILE = "Gray-D50-elle-V2-srgbtrc.icc"
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
-AUTO_IDLE_DELAY_MS = 2000
+AUTO_IDLE_DELAY_SECONDS = 2
 WATCH_KEEPALIVE_MS = 60000
 
 
@@ -74,9 +77,7 @@ class BridgeService(QObject):
         self._watch_condition = threading.Condition(self._lock)
         self._revision = 0
         self._closing = False
-        self._idle_timer = QTimer(self)
-        self._idle_timer.setSingleShot(True)
-        self._idle_timer.timeout.connect(self._notify_idle)
+        self._last_activity_at = time.monotonic()
         self._held_inputs = set()
         QCoreApplication.instance().installEventFilter(self)
         self.requested.connect(self._dispatch, Qt.QueuedConnection)
@@ -86,10 +87,11 @@ class BridgeService(QObject):
         if self._closing:
             return False
         if kind == QEvent.ApplicationDeactivate:
-            was_active = bool(self._held_inputs)
-            self._held_inputs.clear()
-            if was_active and Krita.instance().activeDocument() is not None:
-                self._idle_timer.start(AUTO_IDLE_DELAY_MS)
+            with self._watch_condition:
+                was_active = bool(self._held_inputs)
+                self._held_inputs.clear()
+                if was_active and Krita.instance().activeDocument() is not None:
+                    self._notify_activity_locked()
             return False
         presses = {QEvent.MouseButtonPress: "mouse", QEvent.MouseButtonDblClick: "mouse",
                    QEvent.TabletPress: "tablet", QEvent.TouchBegin: "touch"}
@@ -99,37 +101,43 @@ class BridgeService(QObject):
             return False
         if kind in (QEvent.KeyPress, QEvent.KeyRelease) and event.isAutoRepeat():
             return False
-        if Krita.instance().activeDocument() is None:
-            self._held_inputs.clear()
-            self._idle_timer.stop()
-            return False
-        if kind in presses or kind == QEvent.KeyPress:
-            self._held_inputs.add(presses.get(kind, ("key", event.key()) if kind == QEvent.KeyPress else None))
-            self._idle_timer.stop()
-        else:
-            key = releases.get(kind, ("key", event.key()) if kind == QEvent.KeyRelease else None)
-            if kind == QEvent.MouseButtonRelease and event.buttons() != Qt.NoButton:
-                self._held_inputs.add("mouse")
+        with self._watch_condition:
+            if Krita.instance().activeDocument() is None:
+                self._held_inputs.clear()
+                self._watch_condition.notify_all()
+                return False
+            if kind in presses or kind == QEvent.KeyPress:
+                self._held_inputs.add(presses.get(kind, ("key", event.key()) if kind == QEvent.KeyPress else None))
             else:
-                self._held_inputs.discard(key)
-            if not self._held_inputs:
-                self._idle_timer.start(AUTO_IDLE_DELAY_MS)
+                key = releases.get(kind, ("key", event.key()) if kind == QEvent.KeyRelease else None)
+                if kind == QEvent.MouseButtonRelease and event.buttons() != Qt.NoButton:
+                    self._held_inputs.add("mouse")
+                else:
+                    self._held_inputs.discard(key)
+            self._notify_activity_locked()
         return False
 
-    @pyqtSlot()
-    def _notify_idle(self):
-        with self._watch_condition:
-            if not self._closing and not self._held_inputs:
-                self._revision += 1
-                self._watch_condition.notify_all()
+    def _notify_activity_locked(self):
+        self._last_activity_at = time.monotonic()
+        self._revision += 1
+        self._watch_condition.notify_all()
 
-    def watch(self, after):
+    def watch(self, after, idle_seconds=AUTO_IDLE_DELAY_SECONDS):
+        deadline = time.monotonic() + WATCH_KEEPALIVE_MS / 1000
         with self._watch_condition:
-            self._watch_condition.wait_for(lambda: self._closing or self._revision != after,
-                                           WATCH_KEEPALIVE_MS / 1000)
-            if self._closing:
-                raise BridgeError(503, "Krita 正在关闭")
-            return {"sessionId": self.session_id, "revision": self._revision, "changed": self._revision != after}
+            while True:
+                if self._closing:
+                    raise BridgeError(503, "Krita 正在关闭")
+                now = time.monotonic()
+                remaining_idle = idle_seconds - (now - self._last_activity_at)
+                ready = self._revision != after and not self._held_inputs and remaining_idle <= 0
+                if ready or now >= deadline:
+                    revision = self._revision if ready else after
+                    return {"sessionId": self.session_id, "revision": revision, "changed": ready}
+                remaining = deadline - now
+                if self._revision != after and not self._held_inputs:
+                    remaining = min(remaining, remaining_idle)
+                self._watch_condition.wait(remaining)
 
     def call(self, action, payload):
         """Called only by HTTP workers; completion is signalled by the GUI thread."""
@@ -161,7 +169,6 @@ class BridgeService(QObject):
 
     def close(self):
         QCoreApplication.instance().removeEventFilter(self)
-        self._idle_timer.stop()
         with self._watch_condition:
             self._closing = True
             for job in self._pending:
@@ -216,7 +223,7 @@ class BridgeService(QObject):
                               "colorModel": model, "colorDepth": depth, "colorProfile": profile, "layers": layers})
         with self._lock:
             revision = self._revision
-        return {"version": 1, "sessionId": self.session_id, "activityRevision": revision, "documents": documents}
+        return {"version": 1, "sessionId": self.session_id, "activityRevision": revision, "autoReadDelayVersion": 1, "documents": documents}
 
     def _snapshot(self, payload):
         document_id = _uuid(payload.get("documentId"), "documentId")
@@ -438,7 +445,8 @@ class BridgeService(QObject):
         # Record before refreshing, so a disconnected caller can safely repeat the command.
         self.acks[command_id] = {"signature": signature, "ack": ack}
         doc.refreshProjection()
-        self._idle_timer.start(AUTO_IDLE_DELAY_MS)
+        with self._watch_condition:
+            self._notify_activity_locked()
         return ack
 
 
@@ -470,10 +478,19 @@ def make_handler(service, token, port):
                 if len(tokens) != 1 or not hmac.compare_digest(tokens[0].encode("utf-8"), token.encode("utf-8")):
                     raise BridgeError(403, "Krita 连接验证失败")
                 if self.command == "GET" and self.path.startswith("/watch"):
-                    match = re.fullmatch(r"/watch\?after=(0|[1-9][0-9]*)", self.path)
-                    if match is None or int(match.group(1)) > 9007199254740991:
-                        raise BridgeError(400, "watch 版本号无效")
-                    self._reply(200, service.watch(int(match.group(1))))
+                    parsed = urlsplit(self.path)
+                    query = parse_qs(parsed.query, keep_blank_values=True)
+                    after = query.get("after", [])
+                    delays = query.get("idleSeconds", [str(AUTO_IDLE_DELAY_SECONDS)])
+                    if parsed.path != "/watch" or set(query) - {"after", "idleSeconds"} or len(after) != 1 or len(delays) != 1 or re.fullmatch(r"0|[1-9][0-9]*", after[0]) is None or int(after[0]) > 9007199254740991:
+                        raise BridgeError(400, "watch 参数无效")
+                    try:
+                        idle_seconds = float(delays[0])
+                    except ValueError:
+                        raise BridgeError(400, "停笔等待时间必须为大于 0 的秒数")
+                    if not isfinite(idle_seconds) or idle_seconds <= 0:
+                        raise BridgeError(400, "停笔等待时间必须为大于 0 的秒数")
+                    self._reply(200, service.watch(int(after[0]), idle_seconds))
                     return
                 routes = {("GET", "/status"): "status", ("POST", "/snapshot"): "snapshot",
                           ("POST", "/layer-backup"): "layer-backup", ("POST", "/apply"): "apply"}
