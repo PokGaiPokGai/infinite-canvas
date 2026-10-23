@@ -11,7 +11,7 @@ export type CanvasAgentOp =
     | { type: "update_node"; id: string; patch?: Partial<CanvasNodeData>; metadata?: CanvasNodeMetadata }
     | { type: "delete_node"; id?: string; ids?: string[]; nodeType?: CanvasNodeTypeId }
     | { type: "delete_connections"; id?: string; ids?: string[]; all?: boolean }
-    | { type: "connect_nodes"; id?: string; fromNodeId: string; toNodeId: string; role?: CanvasInputRole }
+    | { type: "connect_nodes"; id?: string; fromNodeId: string; toNodeId: string; role?: CanvasInputRole; instruction?: string; order?: number; enabled?: boolean }
     | { type: "set_viewport"; viewport: ViewportTransform }
     | { type: "select_nodes"; ids: string[] }
     | { type: "run_generation"; nodeId: string; mode?: "text" | "image" | "video" | "audio"; prompt?: string };
@@ -78,9 +78,9 @@ export function applyCanvasAgentOps(snapshot: CanvasAgentSnapshot, ops?: CanvasA
             const exists = connections.some((conn) => conn.fromNodeId === op.fromNodeId && conn.toNodeId === op.toNodeId);
             const from = nodes.find((node) => node.id === op.fromNodeId);
             const to = nodes.find((node) => node.id === op.toNodeId);
-            const guardedEdge = from?.type?.startsWith("production:") || to?.type?.startsWith("production:") || from?.type === "version-stack:images" || to?.type === "version-stack:images" || from?.type === "image-compare:compare" || to?.type === "image-compare:compare" || (!!from && isImageLinkNode(from)) || (!!to && isImageLinkNode(to)) || from?.type === CanvasNodeType.Config || to?.type === CanvasNodeType.Config;
+            const guardedEdge = from?.type?.startsWith("process:") || to?.type?.startsWith("process:") || from?.type?.startsWith("production:") || to?.type?.startsWith("production:") || from?.type === "version-stack:images" || to?.type === "version-stack:images" || from?.type === "image-compare:compare" || to?.type === "image-compare:compare" || (!!from && isImageLinkNode(from)) || (!!to && isImageLinkNode(to)) || from?.type === CanvasNodeType.Config || to?.type === CanvasNodeType.Config;
             const validEdge = !guardedEdge || normalizeConnection(op.fromNodeId, op.toNodeId, nodes, "source")?.fromNodeId === op.fromNodeId;
-            if (!exists && from && to && validEdge && (!guardedEdge || !wouldCreateConnectionCycle(op.fromNodeId, op.toNodeId, connections))) connections = [...connections, { id: op.id || nanoid(), fromNodeId: op.fromNodeId, toNodeId: op.toNodeId, ...(op.role ? { role: op.role } : {}) }];
+            if (!exists && from && to && validEdge && (!guardedEdge || !wouldCreateConnectionCycle(op.fromNodeId, op.toNodeId, connections))) connections = [...connections, { id: op.id || nanoid(), fromNodeId: op.fromNodeId, toNodeId: op.toNodeId, ...(op.role ? { role: op.role } : {}), instruction: op.instruction, order: op.order, enabled: op.enabled }];
         }
         if (op.type === "set_viewport" && op.viewport) viewport = op.viewport;
         if (op.type === "select_nodes") selectedNodeIds = (op.ids || []).filter((id) => nodes.some((node) => node.id === id));

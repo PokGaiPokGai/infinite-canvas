@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Group, Ungroup, Layers } from "lucide-react";
+import { Group, Ungroup, Layers, Workflow } from "lucide-react";
 import { Tooltip } from "antd";
 import { useTranslation } from "react-i18next";
 
@@ -16,6 +16,8 @@ export function CanvasSelectionToolbar({
     showToolbar,
     canStack,
     onStack,
+    canWorkflow,
+    onWorkflow,
     canGroup,
     canUngroup,
     onGroup,
@@ -26,6 +28,8 @@ export function CanvasSelectionToolbar({
     showToolbar: boolean;
     canStack?: boolean;
     onStack?: () => void;
+    canWorkflow?: boolean;
+    onWorkflow?: () => void;
     canGroup: boolean;
     canUngroup: boolean;
     onGroup: () => void;
@@ -40,7 +44,7 @@ export function CanvasSelectionToolbar({
     const top = viewport.y + bounds.top * viewport.k - SELECTION_PAD;
     const width = (bounds.right - bounds.left) * viewport.k + SELECTION_PAD * 2;
     const height = (bounds.bottom - bounds.top) * viewport.k + SELECTION_PAD * 2;
-    const showActions = showToolbar && (canStack || canGroup || canUngroup);
+    const showActions = showToolbar && (canWorkflow || canStack || canGroup || canUngroup);
 
     return (
         <>
@@ -68,6 +72,7 @@ export function CanvasSelectionToolbar({
                     onPointerDown={(event) => event.stopPropagation()}
                 >
                     {canStack && onStack ? <SelectionAction title="将所选图片收为版本堆叠" label="版本堆叠" icon={<Layers className="size-4" />} onClick={onStack} /> : null}
+                    {canWorkflow && onWorkflow ? <SelectionAction title="将所选步骤保存为独立复用流程，保留原节点" label="保存为流程" icon={<Workflow className="size-4" />} onClick={onWorkflow} /> : null}
                     {canGroup ? <SelectionAction title={t("canvas.nodeToolbar.groupTitle")} label={t("canvas.nodeToolbar.group")} icon={<Group className="size-4" />} onClick={onGroup} /> : null}
                     {canUngroup ? <SelectionAction title={t("canvas.nodeToolbar.ungroupTitle")} label={t("canvas.nodeToolbar.ungroup")} icon={<Ungroup className="size-4" />} onClick={onUngroup} /> : null}
                 </div>

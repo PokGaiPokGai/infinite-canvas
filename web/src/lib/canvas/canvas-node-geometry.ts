@@ -146,6 +146,16 @@ export function normalizeConnection(firstNodeId: string, secondNodeId: string, n
     const second = nodes.find((node) => node.id === secondNodeId);
     if (!first || !second || first.id === second.id) return null;
     const valid = (from: CanvasNodeData, to: CanvasNodeData) => hasCanvasNodeHandle(from, "source") && hasCanvasNodeHandle(to, "target") ? { fromNodeId: from.id, toNodeId: to.id } : null;
+    if (first.type.startsWith("process:") || second.type.startsWith("process:")) {
+        const from = firstHandleType === "source" ? first : second;
+        const to = firstHandleType === "source" ? second : first;
+        const kind = from.type === CanvasNodeType.Config ? from.metadata?.generationMode || "image" : from.type === CanvasNodeType.Image ? "image" : from.type === CanvasNodeType.Text ? "text" : getNodeDefinition(from.type)?.resource?.(from)?.kind;
+        if (to.type.startsWith("process:mask-") || to.type === "process:alpha-apply" || to.type === "production:export-preset" || to.type === "production:reference-pack" || to.type === "image-compare:compare" || isImageLinkNode(to)) {
+            if (kind !== "image") return null;
+        }
+        if (["process:batch", "process:workflow"].includes(to.type) && kind !== "image" && kind !== "text") return null;
+        return valid(from, to);
+    }
     if (first.type.startsWith("production:") || second.type.startsWith("production:")) {
         const from = firstHandleType === "source" ? first : second;
         const to = firstHandleType === "source" ? second : first;

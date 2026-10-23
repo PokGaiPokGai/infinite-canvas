@@ -46,6 +46,15 @@ export async function resolveMetadataReferences(metadata: CanvasNodeMetadata) {
 export async function hydrateCanvasImages(nodes: CanvasNodeData[]) {
     return Promise.all(
         nodes.map(async (node) => {
+            if (node.type.startsWith("process:") && node.metadata) {
+                const hydrateResult = async <T extends { kind: string; content: string; storageKey?: string }>(result: T) => result.kind === "image" ? { ...result, content: await resolveImageUrl(result.storageKey, result.content) } : result;
+                const data = node.metadata;
+                node = { ...node, metadata: { ...data,
+                    processResults: await Promise.all((data.processResults || []).map(hydrateResult)),
+                    batchRows: await Promise.all((data.batchRows || []).map(async row => ({ ...row, input: await hydrateResult(row.input), references: await Promise.all(row.references.map(hydrateResult)), result: row.result ? await hydrateResult(row.result) : undefined, ...(row.state === "running" ? { state: "error" as const, error: "上次运行已中断，可仅重试此项。" } : {}) }))),
+                    ...(data.workflow ? { workflow: { ...data.workflow, nodes: await hydrateCanvasImages(data.workflow.nodes) } } : {}),
+                } };
+            }
             if (node.metadata?.referencePack) {
                 const pack = node.metadata.referencePack;
                 return { ...node, metadata: { ...node.metadata, referencePack: { ...pack, images: await Promise.all(pack.images.map(async image => ({ ...image, content: await resolveImageUrl(image.storageKey, image.content) }))) } } };
@@ -58,7 +67,7 @@ export async function hydrateCanvasImages(nodes: CanvasNodeData[]) {
             } : original;
             const content = metadata?.content;
             if ((node.type === CanvasNodeType.Video || node.type === CanvasNodeType.Audio) && metadata?.storageKey) return { ...node, metadata: { ...metadata, content: await resolveMediaUrl(metadata.storageKey, content) } };
-            if ((node.type !== CanvasNodeType.Image && node.type !== CanvasNodeType.Config && node.type !== "blender-link:link" && metadata?.krita?.kind !== "source" && metadata?.krita?.kind !== "link") || !metadata || (!content && !metadata.storageKey && !metadata.outputImages?.length)) return metadata === original ? node : { ...node, metadata };
+            if ((node.type !== CanvasNodeType.Image && node.type !== CanvasNodeType.Config && !node.type.startsWith("process:") && node.type !== "blender-link:link" && metadata?.krita?.kind !== "source" && metadata?.krita?.kind !== "link") || !metadata || (!content && !metadata.storageKey && !metadata.outputImages?.length)) return metadata === original ? node : { ...node, metadata };
             const images = await Promise.all(
                 (metadata.images || []).map(async (image) => {
                     if (!image.content && !image.storageKey) return image;

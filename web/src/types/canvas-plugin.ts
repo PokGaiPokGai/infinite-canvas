@@ -20,6 +20,7 @@ export type PluginModelCapability = "image" | "video" | "text" | "audio";
 export type ModelOption = { value: string; label: string };
 
 export type CanvasPluginAi = {
+    generateConfigured: (node: CanvasNodeData, nodes: CanvasNodeData[], connections: CanvasConnection[], signal: AbortSignal) => Promise<CanvasNodeMetadata>;
     generateImage: (prompt: string, options?: GenerateImageOptions) => Promise<GenerateImageResult>;
     generateVideo: (prompt: string, options?: GenerateVideoOptions) => Promise<GenerateVideoResult>;
     generateText: (prompt: string, options?: GenerateTextOptions) => Promise<GenerateTextResult>;
