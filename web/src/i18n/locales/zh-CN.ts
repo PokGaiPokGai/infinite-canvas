@@ -314,6 +314,8 @@ export default {
             copyPaste: "复制 / 粘贴节点，或粘贴剪切板文本/图片",
             copyPasteNodes: "复制 / 粘贴节点",
             delete: "删除选中",
+            disconnect: "断开点击的连线",
+            leftClick: "左键单击连线",
             group: "将选中节点打组",
             ungroup: "解散选中的组",
             escape: "取消选择并关闭浮层",

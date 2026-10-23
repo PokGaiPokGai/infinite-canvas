@@ -185,12 +185,12 @@ function ConfigMiniPopover({ label, children, width, height, chipStyle, textColo
     const buttonRef = useRef<HTMLButtonElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
     const buttonRect = useCanvasPopoverAnchor(buttonRef, open);
-    useCanvasPopoverOutsideClick(buttonRef, panelRef, open, () => setOpen(false));
+    const wasClosedByTrigger = useCanvasPopoverOutsideClick(buttonRef, panelRef, open, () => setOpen(false));
     const gap = 8;
     const left = buttonRect ? Math.max(gap, Math.min(buttonRect.right + gap + width <= window.innerWidth - gap ? buttonRect.right + gap : buttonRect.left - width - gap, window.innerWidth - width - gap)) : 0;
     const top = buttonRect ? Math.max(gap, Math.min(buttonRect.top, window.innerHeight - height - gap)) : 0;
     return <>
-        <button ref={buttonRef} type="button" className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-md border px-2 text-[11px]" style={chipStyle} aria-expanded={open} onPointerDown={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); setOpen((current) => !current); }}>{label}</button>
+        <button ref={buttonRef} type="button" className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-md border px-2 text-[11px]" style={chipStyle} aria-expanded={open} onPointerDown={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); if (!wasClosedByTrigger(event)) setOpen((current) => !current); }}>{label}</button>
         {open && buttonRect ? createPortal(<div ref={panelRef} data-canvas-config-mini-popover className="rounded-lg border p-3 text-xs shadow-lg" style={{ position: "fixed", left, top, width, maxHeight: "calc(100vh - 16px)", overflowY: "auto", zIndex: 1200, color: textColor, background: panelColor, borderColor: strokeColor }} onPointerDown={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()} onWheel={(event) => event.stopPropagation()}>{children}</div>, document.body) : null}
     </>;
 }

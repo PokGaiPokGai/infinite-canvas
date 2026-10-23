@@ -314,6 +314,8 @@ export default {
             copyPaste: "Copy/paste nodes or paste clipboard text/images",
             copyPasteNodes: "Copy/paste nodes",
             delete: "Delete selection",
+            disconnect: "Disconnect the clicked edge",
+            leftClick: "Left-click an edge",
             group: "Group selected nodes",
             ungroup: "Ungroup selected nodes",
             escape: "Clear selection and close overlays",

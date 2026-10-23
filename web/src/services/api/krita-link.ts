@@ -17,7 +17,11 @@ async function checked(path: string, body?: unknown, signal?: AbortSignal) {
     return response;
 }
 
-export const getKritaStatus = async (signal?: AbortSignal): Promise<KritaStatus> => (await checked("/status", undefined, signal)).json();
+export const getKritaStatus = async (signal?: AbortSignal): Promise<KritaStatus> => {
+    const response = await checked("/status", undefined, signal);
+    if (!response.headers.get("Content-Type")?.includes("application/json")) throw new Error("Krita 未连接：当前页面未接入本机连接服务。");
+    return response.json();
+};
 export const getKritaPresets = async (signal?: AbortSignal): Promise<KritaPresetCatalog> => (await checked("/presets", undefined, signal)).json();
 export const createKritaSnapshot = async (documentId: string, layerId?: string): Promise<KritaSnapshot> => (await checked("/snapshots", { documentId, ...(layerId ? { layerId } : {}) })).json();
 export const checkKritaSnapshot = async (documentId: string, layerId?: string, expectedPixelSha256?: string, signal?: AbortSignal): Promise<KritaSnapshotCheck> => (await checked("/snapshots", { documentId, ...(layerId ? { layerId } : {}), ...(expectedPixelSha256 ? { expectedPixelSha256 } : {}) }, signal)).json();

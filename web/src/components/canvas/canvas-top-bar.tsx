@@ -167,6 +167,7 @@ export function CanvasTopBar({
                     <Shortcut keys={["Ctrl / Cmd", "Shift", "Z"]} value={t("canvas.redo")} />
                     <Shortcut keys={["Ctrl / Cmd", "Y"]} value={t("canvas.redo")} />
                     <Shortcut keys={["Delete / Backspace"]} value={t("canvas.shortcut.delete")} />
+                    <Shortcut keys={["Alt", t("canvas.shortcut.leftClick")]} value={t("canvas.shortcut.disconnect")} />
                     <Shortcut keys={["Esc"]} value={t("canvas.shortcut.escape")} />
                     <Shortcut keys={[t("canvas.shortcut.dropMedia")]} value={t("canvas.shortcut.upload")} />
                 </div>

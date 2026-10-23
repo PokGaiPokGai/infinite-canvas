@@ -13,7 +13,6 @@ import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
 import type { CanvasNodeContext, CanvasNodeToolbarItem } from "@/types/canvas-plugin";
 import type { KritaGeneration, KritaGenerationParams, KritaLayer, KritaLinkMetadata, KritaPresetCatalog, KritaPresetMetadata, KritaSourceMetadata, KritaStatus } from "@/types/krita-link";
 
-const enabled = import.meta.env.VITE_LOCAL_SHARED_STORAGE === "1";
 const buttonClass = "inline-flex items-center justify-center gap-1.5 rounded px-2.5 py-1.5 text-xs hover:bg-black/5 dark:hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40";
 const fieldClass = "w-full rounded border px-2.5 py-2 text-sm outline-none focus:ring-1";
 const textOf = (error: unknown) => error instanceof Error ? error.message : "本机绘画连接暂时不可用。";
@@ -21,8 +20,8 @@ const controlStyle = (ctx: CanvasNodeContext): CSSProperties => ({ background: c
 const isAbort = (error: unknown) => error instanceof DOMException && error.name === "AbortError";
 const jobLabel = { queued: "等待中", running: "生成中", succeeded: "已完成", failed: "失败" };
 
-export const isKritaResultNode = (node: CanvasNodeData) => enabled && node.type === CanvasNodeType.Image && node.metadata?.krita?.kind === "result";
-export const isKritaDockedNode = (node: CanvasNodeData) => enabled && (node.type === KRITA_SOURCE || node.type === KRITA_PRESET || isKritaResultNode(node));
+export const isKritaResultNode = (node: CanvasNodeData) => node.type === CanvasNodeType.Image && node.metadata?.krita?.kind === "result";
+export const isKritaDockedNode = (node: CanvasNodeData) => node.type === KRITA_SOURCE || node.type === KRITA_PRESET || isKritaResultNode(node);
 const isKritaReadNode = (node: CanvasNodeData) => node.type === KRITA_SOURCE || (node.type === KRITA_LINK && node.metadata?.krita?.kind === "link" && node.metadata.krita.mode === "read");
 const readSnapshot = (node: CanvasNodeData) => {
     const metadata = node.metadata?.krita;
@@ -472,7 +471,7 @@ export function getKritaToolbar(ctx: CanvasNodeContext): CanvasNodeToolbarItem[]
 
 let registered = false;
 export function registerLocalKritaNodes() {
-    if (!enabled || registered) return;
+    if (registered) return;
     registered = true;
     registerNodeDefinitions([
         { type: KRITA_LINK, title: "Krita Link", icon: <img src="/icons/krita.png" alt="" className="size-4" />, description: "在节点上切换读取或新图写回 Krita", defaultSize: { width: 360, height: 360 }, defaultMetadata: { krita: { kind: "link", mode: "read", writeTargetMode: "new", newLayerPolicy: "reuse" } }, hasSourceHandle: (node) => node.metadata?.krita?.kind === "link", hasTargetHandle: (node) => node.metadata?.krita?.kind === "link" && node.metadata.krita.mode === "write", keepAspectRatio: () => true, Content: LinkContent, Panel: LinkPanel, resource: (node) => node.metadata?.krita?.kind === "link" && node.metadata.content && (node.metadata.krita.mode === "read" || hasKritaWriteOutput(node)) ? { kind: "image", url: node.metadata.content } : null },

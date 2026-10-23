@@ -291,10 +291,6 @@ function InfiniteCanvasPage() {
     const nodesRef = useRef(nodes);
 
     useEffect(() => {
-        if (!dialogNodeId) return;
-        const currentNode = nodesRef.current.find((node) => node.id === dialogNodeId);
-        if (currentNode && (isKritaDockedNode(currentNode) || getNodeDefinition(currentNode.type)?.panelPlacement === "right")) return;
-        let outsideDown: { pointerId: number; x: number; y: number; onOpenerNode: boolean } | null = null;
         const isInsidePanel = (target: EventTarget | null) => {
             const element = target instanceof Element ? target : target instanceof Node ? target.parentElement : null;
             if (!element) return false;
@@ -303,28 +299,16 @@ function InfiniteCanvasPage() {
         };
         const onPointerDown = (event: PointerEvent) => {
             closedPanelByNodeClickRef.current = null;
-            const element = event.target instanceof Element ? event.target : event.target instanceof Node ? event.target.parentElement : null;
-            outsideDown = event.button === 0 && !isInsidePanel(event.target)
-                ? { pointerId: event.pointerId, x: event.clientX, y: event.clientY, onOpenerNode: element?.closest("[data-node-id]")?.getAttribute("data-node-id") === dialogNodeId }
-                : null;
+            if (!dialogNodeId || isInsidePanel(event.target)) return;
+            closedPanelByNodeClickRef.current = dialogNodeId;
+            setDialogNodeId((current) => current === dialogNodeId ? null : current);
         };
-        const onPointerUp = (event: PointerEvent) => {
-            if (!outsideDown || outsideDown.pointerId !== event.pointerId) return;
-            const { x, y, onOpenerNode } = outsideDown;
-            outsideDown = null;
-            if (Math.hypot(event.clientX - x, event.clientY - y) <= 3 && !isInsidePanel(event.target)) {
-                if (onOpenerNode) closedPanelByNodeClickRef.current = dialogNodeId;
-                setDialogNodeId((current) => current === dialogNodeId ? null : current);
-            }
-        };
-        const onPointerCancel = () => { outsideDown = null; };
+        const onKeyDown = () => { closedPanelByNodeClickRef.current = null; };
         window.addEventListener("pointerdown", onPointerDown, true);
-        window.addEventListener("pointerup", onPointerUp, true);
-        window.addEventListener("pointercancel", onPointerCancel, true);
+        window.addEventListener("keydown", onKeyDown, true);
         return () => {
             window.removeEventListener("pointerdown", onPointerDown, true);
-            window.removeEventListener("pointerup", onPointerUp, true);
-            window.removeEventListener("pointercancel", onPointerCancel, true);
+            window.removeEventListener("keydown", onKeyDown, true);
         };
     }, [dialogNodeId]);
 
@@ -3283,7 +3267,9 @@ function InfiniteCanvasPage() {
                 inputSummary={getInputSummary(configInputsById.get(contentNode.id) || [])}
                 inputRoles={imageInputRolesByNodeId.get(contentNode.id) || []}
                 onConfigChange={handleConfigNodeChange}
-                onComposerToggle={() => setDialogNodeId((current) => (current === contentNode.id ? null : contentNode.id))}
+                onComposerToggle={() => {
+                    if (closedPanelByNodeClickRef.current !== contentNode.id) setDialogNodeId((current) => (current === contentNode.id ? null : contentNode.id));
+                }}
                 onStop={confirmStopGeneration}
                 onGenerate={(nodeId) => {
                     const target = nodesRef.current.find((item) => item.id === nodeId);
@@ -3375,6 +3361,7 @@ function InfiniteCanvasPage() {
                                 to={to}
                                 unavailableReason={unavailableReason}
                                 active={selectedConnectionId === connection.id || relatedHighlight.connectionIds.has(connection.id)}
+                                onDisconnect={() => deleteConnection(connection.id)}
                                 onSelect={() => {
                                     setSelectedConnectionId(connection.id);
                                     setSelectedNodeIds(new Set());
@@ -3511,7 +3498,9 @@ function InfiniteCanvasPage() {
                     onInfo={(node) => setInfoNodeId(node.id)}
                     onDecreaseFont={(node) => handleFontSizeChange(node.id, Math.max(10, (node.metadata?.fontSize || 14) - 2))}
                     onIncreaseFont={(node) => handleFontSizeChange(node.id, Math.min(32, (node.metadata?.fontSize || 14) + 2))}
-                    onToggleDialog={(node) => setDialogNodeId((current) => (current === node.id ? null : node.id))}
+                    onToggleDialog={(node) => {
+                        if (closedPanelByNodeClickRef.current !== node.id) setDialogNodeId((current) => (current === node.id ? null : node.id));
+                    }}
                     onGenerateImage={generateImageFromTextNode}
                     onUpload={(node) => handleUploadRequest(node.id)}
                     onDownload={downloadNodeImage}
@@ -3654,7 +3643,7 @@ function InfiniteCanvasPage() {
 
                 <AssetPickerModal open={assetPickerOpen} onInsert={handleAssetInsert} onClose={() => setAssetPickerOpen(false)} />
             </section>
-            {dockedNode ? <aside key={dockedNode.id} aria-label="节点控制面板" className="h-full w-80 min-w-0 shrink-0 border-l" style={{ background: theme.node.panel, borderColor: theme.node.stroke }}>{renderPluginPanel(dockedNode)}</aside> : null}
+            {dockedNode ? <aside key={dockedNode.id} data-node-panel={dockedNode.id} aria-label="节点控制面板" className="h-full w-80 min-w-0 shrink-0 border-l" style={{ background: theme.node.panel, borderColor: theme.node.stroke }}>{renderPluginPanel(dockedNode)}</aside> : null}
         </main>
     );
 }

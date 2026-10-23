@@ -36,38 +36,28 @@ export function useCanvasPopoverAnchor(buttonRef: RefObject<HTMLElement | null>,
 
 export function useCanvasPopoverOutsideClick(buttonRef: RefObject<HTMLElement | null>, panelRef: RefObject<HTMLElement | null>, open: boolean, onClose: () => void) {
     const closeRef = useRef(onClose);
+    const closedByTriggerRef = useRef(false);
     useLayoutEffect(() => { closeRef.current = onClose; }, [onClose]);
 
     useEffect(() => {
-        if (!open) return;
-        let outsideStart: { pointerId: number; x: number; y: number } | null = null;
         const isInside = (target: EventTarget | null) => {
             if (!(target instanceof Node)) return false;
-            if (buttonRef.current?.contains(target) || panelRef.current?.contains(target)) return true;
+            if (panelRef.current?.contains(target)) return true;
             const element = target instanceof Element ? target : target.parentElement;
             return !!element?.closest(".ant-select-dropdown,.ant-dropdown,.ant-popover,.ant-picker-dropdown,[data-canvas-resource-mention-menu]");
         };
         const onPointerDown = (event: PointerEvent) => {
-            if (event.button !== 0 || !event.isPrimary || isInside(event.target)) {
-                outsideStart = null;
-                return;
-            }
-            outsideStart = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
+            closedByTriggerRef.current = false;
+            if (!open || isInside(event.target)) return;
+            closedByTriggerRef.current = event.target instanceof Node && !!buttonRef.current?.contains(event.target);
+            closeRef.current();
         };
-        const onPointerUp = (event: PointerEvent) => {
-            if (!outsideStart || outsideStart.pointerId !== event.pointerId) return;
-            const { x, y } = outsideStart;
-            outsideStart = null;
-            if (event.button === 0 && event.isPrimary && !isInside(event.target) && Math.hypot(event.clientX - x, event.clientY - y) <= 3) closeRef.current();
-        };
-        const onPointerCancel = () => { outsideStart = null; };
         window.addEventListener("pointerdown", onPointerDown, true);
-        window.addEventListener("pointerup", onPointerUp, true);
-        window.addEventListener("pointercancel", onPointerCancel, true);
         return () => {
             window.removeEventListener("pointerdown", onPointerDown, true);
-            window.removeEventListener("pointerup", onPointerUp, true);
-            window.removeEventListener("pointercancel", onPointerCancel, true);
         };
     }, [buttonRef, panelRef, open]);
+
+    // A trigger press closes on pointerdown; its later click must not reopen the panel.
+    return (event: { detail: number }) => event.detail > 0 && closedByTriggerRef.current;
 }

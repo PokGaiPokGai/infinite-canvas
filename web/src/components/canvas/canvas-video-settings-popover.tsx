@@ -23,14 +23,14 @@ export function CanvasVideoSettingsPopover({ config, onConfigChange, buttonClass
     const [open, setOpen] = useState(false);
     const buttonRect = useCanvasPopoverAnchor(buttonRef, open);
 
-    useCanvasPopoverOutsideClick(buttonRef, panelRef, open, () => setOpen(false));
+    const wasClosedByTrigger = useCanvasPopoverOutsideClick(buttonRef, panelRef, open, () => setOpen(false));
 
     const panel = open && buttonRect ? <VideoSettingsPortal buttonRect={buttonRect} panelRef={panelRef} placement={placement} theme={theme} config={config} onConfigChange={onConfigChange} /> : null;
 
     return (
         <>
             <span ref={buttonRef} className="inline-flex min-w-0">
-                <Button size="small" type="text" className={buttonClassName || "!h-8 !max-w-[220px] !justify-start !rounded-full !px-2.5"} style={{ background: theme.node.fill, color: theme.node.text }} icon={<Settings2 className="size-3.5" />} onClick={() => setOpen((current) => !current)}>
+                <Button size="small" type="text" className={buttonClassName || "!h-8 !max-w-[220px] !justify-start !rounded-full !px-2.5"} style={{ background: theme.node.fill, color: theme.node.text }} icon={<Settings2 className="size-3.5" />} onClick={(event) => { if (!wasClosedByTrigger(event)) setOpen((current) => !current); }}>
                     <span className="truncate">
                         {videoResolutionLabel(config.vquality)} · {videoSizeLabel(config.size)} · {videoSecondsLabel(config.videoSeconds)} · {videoModeLabel(config.videoMode)}
                     </span>

@@ -31,36 +31,30 @@ export function ConnectionRoleBadge({
     const [open, setOpen] = useState(false);
     const [instruction, setInstruction] = useState(connection.instruction || "");
     const rootRef = useRef<HTMLDivElement>(null);
+    const closedByTriggerRef = useRef(false);
     const latestRef = useRef({ instruction, original: connection.instruction || "", onChange });
     latestRef.current = { instruction, original: connection.instruction || "", onChange };
     useEffect(() => {
-        if (!open) return;
-        let start: { id: number; x: number; y: number; outside: boolean } | null = null;
-        const outside = (target: EventTarget | null) => !(target instanceof Node && rootRef.current?.contains(target));
+        const outside = (target: EventTarget | null) => !(target instanceof Node && rootRef.current?.querySelector('[role="dialog"]')?.contains(target));
         const close = () => {
             setOpen(false);
             const { instruction: draft, original, onChange: save } = latestRef.current;
             if (draft.trim() !== original) save({ instruction: draft.trim() });
         };
         const pointerDown = (event: PointerEvent) => {
-            start = { id: event.pointerId, x: event.clientX, y: event.clientY, outside: outside(event.target) };
-        };
-        const pointerUp = (event: PointerEvent) => {
-            const pressed = start;
-            if (pressed?.id !== event.pointerId) return;
-            start = null;
-            if (pressed?.outside && outside(event.target) && Math.hypot(event.clientX - pressed.x, event.clientY - pressed.y) <= 4) close();
+            closedByTriggerRef.current = false;
+            if (!open || !outside(event.target)) return;
+            closedByTriggerRef.current = event.target instanceof Node && !!rootRef.current?.contains(event.target);
+            close();
         };
         const keyDown = (event: KeyboardEvent) => {
-            if (event.key !== "Escape") return;
+            if (!open || event.key !== "Escape") return;
             close();
         };
         window.addEventListener("pointerdown", pointerDown, true);
-        window.addEventListener("pointerup", pointerUp, true);
         window.addEventListener("keydown", keyDown, true);
         return () => {
             window.removeEventListener("pointerdown", pointerDown, true);
-            window.removeEventListener("pointerup", pointerUp, true);
             window.removeEventListener("keydown", keyDown, true);
         };
     }, [open]);
@@ -130,6 +124,7 @@ export function ConnectionRoleBadge({
                 onMouseDown={(event) => event.stopPropagation()}
                 onClick={(event) => {
                     event.stopPropagation();
+                    if (event.detail > 0 && closedByTriggerRef.current) return;
                     onSelect();
                     if (!open) setInstruction(connection.instruction || "");
                     else if (instruction.trim() !== (connection.instruction || "")) onChange({ instruction: instruction.trim() });
@@ -150,6 +145,7 @@ export function ConnectionPath({
     unavailableReason,
     active,
     onSelect,
+    onDisconnect,
     onContextMenu,
 }: {
     connection: CanvasConnection;
@@ -158,6 +154,7 @@ export function ConnectionPath({
     unavailableReason: string | null;
     active: boolean;
     onSelect: () => void;
+    onDisconnect: () => void;
     onContextMenu?: (event: ReactMouseEvent<SVGPathElement>) => void;
 }) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
@@ -180,6 +177,11 @@ export function ConnectionPath({
                 style={{ cursor: "pointer", pointerEvents: "stroke" }}
                 onClick={(event) => {
                     event.stopPropagation();
+                    if (event.button === 0 && event.altKey) {
+                        event.preventDefault();
+                        onDisconnect();
+                        return;
+                    }
                     onSelect();
                 }}
                 onContextMenu={(event) => {
