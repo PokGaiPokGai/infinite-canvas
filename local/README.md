@@ -32,6 +32,8 @@ AI 渠道与偏好、提示词来源和主题这 3 个核心持久化配置也�
 
 ## 启动方式
 
+开发网页的标签标题显示为 `production-workflows · 3060 | 无限画布`。分支名从前端所属 worktree 的 Git 状态自动读取，省略公共 `codex/` 前缀；端口取当前页面实际端口。首页、画布和语言切换均保留标识，切换 Git 分支后刷新即可更新。detached HEAD 显示 `detached@短提交号`，Git 不可用显示「未知分支」。所有复用 `web/vite.config.ts` 且已包含此改动的开发入口自动生效；现存旧分支需先纳入此改动。正式静态构建仍只显示产品标题。
+
 ### 第二批制作节点预览
 
 双击本 worktree 根目录的 `启动第二批节点验收.cmd`，打开 [3060 制作节点画布](http://127.0.0.1:3060/canvas)。入口为 `local/Start-ProductionWorkflows.ps1`，运行配置为 `local/vite.production-workflows.config.ts`；前端使用此 worktree 的源码并热更新。数据、Krita／Blender／Codex 桥接沿用主检出 3002，ComfyUI 沿用 8188；不另建空白存储，不停止原来的 3000、3040 或 3050 页面。
