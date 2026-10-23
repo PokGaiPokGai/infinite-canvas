@@ -16,12 +16,17 @@ function destinationOf(value) {
 }
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 class LinkError extends Error { constructor(status, message) { super(message); this.status = status; } }
+function portOf(value) {
+    if (!Number.isInteger(value) || value < 1 || value > 65535) throw new LinkError(400, 'BlenderMCP 端口必须是 1–65535 的整数。');
+    return value;
+}
 
-export function sendBlenderCommand(type, params = {}) {
+export function sendBlenderCommand(type, params = {}, port = 9876) {
+    portOf(port);
     return new Promise((resolveCommand, reject) => {
         const decoder = new StringDecoder('utf8');
         let text = '', completed = false;
-        const socket = createConnection({ host: '127.0.0.1', port: 9876 }, () => socket.write(JSON.stringify({ type, params })));
+        const socket = createConnection({ host: '127.0.0.1', port }, () => socket.write(JSON.stringify({ type, params })));
         const finish = (error, value) => {
             if (completed) return;
             completed = true;
@@ -37,7 +42,7 @@ export function sendBlenderCommand(type, params = {}) {
             if (response.status !== 'success') return finish(new LinkError(502, response.message || 'BlenderMCP 拒绝了操作。'));
             finish(null, response.result);
         });
-        socket.on('error', () => finish(new LinkError(503, 'BlenderMCP 未连接，请在 Blender 的 MCP for Blender 面板启动服务（9876）。')));
+        socket.on('error', () => finish(new LinkError(503, `无法连接 BlenderMCP（127.0.0.1:${port}），请核对 Blender 面板中的端口并启动服务。`)));
         socket.on('close', () => { if (!completed) finish(new LinkError(502, 'BlenderMCP 连接已中断，未自动重试。')); });
     });
 }
@@ -78,18 +83,20 @@ async function atomicJson(path, value) {
 
 export function createBlenderBridge({ appRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..'), commandImpl = sendBlenderCommand, canvasOrigin = 'http://127.0.0.1:3000' } = {}) {
     const root = join(appRoot, '.local', 'blender-link');
+    const connectionPath = join(root, 'connection.json');
+    const connectionPort = async () => portOf((await storedJson(connectionPath))?.port ?? 9876);
     let queue = Promise.resolve();
     const serialize = action => {
         const next = queue.catch(() => {}).then(action);
         queue = next;
         return next;
     };
-    const execute = async payload => {
+    const execute = async (payload, port) => {
         const script = await readFile(new URL('./blender-commands.py', import.meta.url), 'utf8');
         // Only validated data is inserted as base64. Browsers cannot supply Python.
         const encoded = Buffer.from(JSON.stringify(payload)).toString('base64');
         const code = `${script}\nprint('__IC_BLENDER__' + json.dumps(run(json.loads(base64.b64decode('${encoded}'))), ensure_ascii=True))`;
-        const response = await commandImpl('execute_code', { code });
+        const response = await commandImpl('execute_code', { code }, port);
         let result;
         try { result = JSON.parse(response.result.split('__IC_BLENDER__').at(-1)); }
         catch { throw new LinkError(502, 'BlenderMCP 返回的数据无效。'); }
@@ -105,15 +112,24 @@ export function createBlenderBridge({ appRoot = resolve(dirname(fileURLToPath(im
                 (request.headers['sec-fetch-site'] && request.headers['sec-fetch-site'] !== 'same-origin') ||
                 request.headers['x-infinite-canvas-blender-ui'] !== '1') throw new LinkError(403, '仅允许本机画布访问。');
             await serialize(async () => {
+                if (path === '/blender/connection' && request.method === 'POST') {
+                    const port = portOf((await bodyOf(request)).port);
+                    await mkdir(root, { recursive: true });
+                    await atomicJson(connectionPath, { port });
+                    json(response, 200, { port });
+                    return;
+                }
+                const port = await connectionPort();
+                if (path === '/blender/connection' && request.method === 'GET') { json(response, 200, { port }); return; }
                 if (request.method === 'GET' && path === '/blender/status') {
-                    try { json(response, 200, await execute({ operation: 'status' })); }
-                    catch (error) { if (error.status !== 503) throw error; json(response, 200, { connected: false, version: 1, sources: [], targets: [], images: [], error: error.message }); }
+                    try { json(response, 200, { ...await execute({ operation: 'status' }, port), port }); }
+                    catch (error) { if (error.status !== 503) throw error; json(response, 200, { connected: false, port, version: 1, sources: [], targets: [], images: [], error: error.message }); }
                     return;
                 }
                 if (request.method === 'POST' && path === '/blender/image-preview') {
                     const data = await bodyOf(request);
                     if (!validId(data.sessionId) || !validId(data.imageId)) throw new LinkError(400, '贴图绑定无效。');
-                    const result = await execute({ operation: 'image-preview', sessionId: data.sessionId, imageId: data.imageId });
+                    const result = await execute({ operation: 'image-preview', sessionId: data.sessionId, imageId: data.imageId }, port);
                     const image = png(result.imageBase64);
                     if (result.sessionId !== data.sessionId || result.imageId !== data.imageId || !/^[a-f0-9]{64}$/.test(result.revision) || result.width !== image.width || result.height !== image.height) throw new LinkError(502, '贴图预览校验失败。');
                     json(response, 200, result);
@@ -129,7 +145,7 @@ export function createBlenderBridge({ appRoot = resolve(dirname(fileURLToPath(im
                 if (request.method === 'POST' && path === '/blender/snapshots') {
                     const data = await bodyOf(request);
                     if (!validId(data.sessionId) || !validId(data.sourceId)) throw new LinkError(400, '读取绑定无效。');
-                    const result = await execute({ operation: 'snapshot', sessionId: data.sessionId, sourceId: data.sourceId });
+                    const result = await execute({ operation: 'snapshot', sessionId: data.sessionId, sourceId: data.sourceId }, port);
                     const image = png(result.imageBase64);
                     if (image.sha256 !== result.sha256 || image.width !== result.width || image.height !== result.height || result.sessionId !== data.sessionId || result.sourceId !== data.sourceId) throw new LinkError(502, 'Blender 快照校验失败。');
                     const id = randomUUID();
@@ -143,23 +159,25 @@ export function createBlenderBridge({ appRoot = resolve(dirname(fileURLToPath(im
                 }
                 if (request.method === 'POST' && path === '/blender/returns') {
                     const data = await bodyOf(request);
+                    const commandPort = portOf(data.port);
                     if (![data.sessionId, data.commandId].every(validId) || !['sRGB', 'Non-Color'].includes(data.colorSpace)) throw new LinkError(400, '写回目标或色彩用途无效。');
                     const destination = destinationOf(data.destination);
                     const image = png(data.imageBase64);
                     const payload = { operation: 'write', commandId: data.commandId, sessionId: data.sessionId, destination, colorSpace: data.colorSpace, imageBase64: data.imageBase64, width: image.width, height: image.height, sha256: image.sha256 };
-                    const fingerprint = digest(JSON.stringify(payload));
+                    const fingerprint = digest(JSON.stringify({ ...payload, port: commandPort }));
                     const folder = join(root, 'returns'), recordPath = join(folder, `${data.commandId}.json`);
                     await mkdir(folder, { recursive: true });
                     const record = await storedJson(recordPath);
-                    if (record && record.fingerprint !== fingerprint) throw new LinkError(409, '同一写回指令不能更换图片或目标。');
+                    if (record && record.fingerprint !== fingerprint) throw new LinkError(409, '同一写回指令不能更换图片、目标或连接端口。');
                     if (record?.result) { json(response, 200, record.result); return; }
+                    if (commandPort !== port) throw new LinkError(409, `待确认写回绑定端口 ${commandPort}；请先将连接设置恢复到该端口，再重试同一指令。`);
                     if (!record) {
                         await writeFile(join(folder, `${data.commandId}.png`), image.bytes, { flag: 'wx' });
                         await atomicJson(recordPath, { fingerprint, sessionId: data.sessionId, destination, createdAt: new Date().toISOString() });
                     }
-                    const result = await execute(payload);
+                    const result = await execute(payload, commandPort);
                     if (result.commandId !== data.commandId || result.sessionId !== data.sessionId || JSON.stringify(result.destination) !== JSON.stringify(destination) || result.sha256 !== image.sha256 || !validId(result.imageId)) throw new LinkError(502, '写回回执无效；请检查 Blender 后重试同一指令。');
-                    const receipt = { ...result, returnedAt: new Date().toISOString() };
+                    const receipt = { ...result, port: commandPort, returnedAt: new Date().toISOString() };
                     await atomicJson(recordPath, { fingerprint, result: receipt });
                     json(response, 200, receipt);
                     return;

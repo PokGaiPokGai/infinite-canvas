@@ -58,8 +58,8 @@ test("write freezes only one finished selected image, excluding stale or loading
 test("a pending write cannot release an image downstream", () => {
     const write = node("write", BLENDER_LINK, { content: "frozen-image", storageKey: "frozen", blender: { mode: "write" } });
     expect(hasBlenderWriteOutput(write)).toBe(false);
-    write.metadata!.blender!.receipt = { commandId: "command", sessionId: "session", destination: { kind: "new", name: "Result" }, imageId: "image", imageName: "Result", sha256: "digest", returnedAt: "date" };
+    write.metadata!.blender!.receipt = { commandId: "command", sessionId: "session", port: 9876, destination: { kind: "new", name: "Result" }, imageId: "image", imageName: "Result", sha256: "digest", returnedAt: "date" };
     expect(hasBlenderWriteOutput(write)).toBe(true);
-    write.metadata!.blender!.pending = { commandId: "next", sessionId: "session", destination: { kind: "image", imageId: "image", expectedRevision: "revision" }, colorSpace: "sRGB", storageKey: "frozen", inputKey: "edge:frozen" };
+    write.metadata!.blender!.pending = { commandId: "next", sessionId: "session", port: 9876, destination: { kind: "image", imageId: "image", expectedRevision: "revision" }, colorSpace: "sRGB", storageKey: "frozen", inputKey: "edge:frozen" };
     expect(hasBlenderWriteOutput(write)).toBe(false);
 });
