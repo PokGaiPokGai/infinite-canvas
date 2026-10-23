@@ -137,3 +137,11 @@ ComfyUI 原图保存到其配置的 `output/InfiniteCanvas/Canvas_*.png`，参�
 ## Blender 手动连接
 
 复用现有 BlenderMCP 的视口／渲染图读取和材质贴图写回见 [Blender Link 第一版说明](./blender-README.md)。
+
+## 图片比较分支预览
+
+在 `codex/image-compare` worktree 双击根目录的 `启动图片比较版.cmd`，或执行 `powershell -NoProfile -File local/Start-ImageCompare.ps1 -NoBrowser`。前端来自当前 worktree，地址为 `http://127.0.0.1:3040/canvas`，身份接口为 `/__image-compare`。复用主检出 3002 的共享数据、Krita、Blender 与 Codex 服务，以及现有 ComfyUI；在预览中保存会更新同一份共享数据。
+
+入口核对依赖锁文件并复用主检出的 node_modules；验证分支身份、共享数据和 Krita 状态接口。重复启动复用本入口服务，3040 被其他进程占用时退出，不终止别的服务。日志位于本 worktree `.local/image-compare-*.log`。
+
+使用：从「扩展节点」添加「图片比较」，将两个图片来源连接到左侧输入，单击节点，在下方小面板指定 A、B；滑杆常驻节点下方并与图片等宽，滑块中心对齐分割线。滑杆模式左侧 A、右侧 B，两图等比铺满同一视框，比例不同时裁边。使用加减按钮同步缩放、拖动画面同步平移；不做自动对齐。在小面板选定 A 或 B 后，右侧输出可连接生成配置或图像写回节点。缩放与平移是临时查看状态；来源、模式和输出选择随画布保存。源图生成中、删除或断线时无有效输出，不会沿用旧图。

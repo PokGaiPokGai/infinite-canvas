@@ -5,6 +5,11 @@ description: Implemented changes that still need manual verification
 
 # Pending Tests
 
+
+- 图片比较外观：图片等比铺满整个节点，不同比例裁边而不拉伸；缩放与平移限制在不露出空白的范围。滑杆常驻节点外下方，与图片等宽，滑块中心与分割线使用相同百分比定位，不显示两侧标签或设置按钮；单击图片打开下方小面板，切换预览模式时仍保留，操作滑杆返回滑杆模式。来源、模式、缩放、输出与错误提示集中到更下方的小面板，复用公共面板的外部关闭及 Escape 逻辑。浏览器已验证图片 cover、滑杆位于图片之外、面板与滑杆不重叠、关闭面板仍能比较；未执行构建，视觉效果仍待用户确认。
+
+- 图片比较节点：从「扩展节点 → 图片比较」创建；连接图片／图像生成配置／图像桥接节点，在下方设置面板选择 A、B。支持滑杆与切换预览、两图同步缩放和平移、重置视图；「选 A/B 为输出」输出原图及原存储引用，不输出比较截图。改变预览不改变选定输出；源图更新会跟随，断线、停用、删除或生成中清空不可用输出。浏览器已验证深浅主题、1440×1000 与 900×760 窗口、两种预览、键盘／滑杆、同步缩放平移、切换输出和重载保留来源；图数据验证覆盖下游引用、Blender 写回输入解析与来源失效。实际生成请求、Krita／Blender 写回未触发，仍需用户验收。
+
 - Canvas home navigation: Home is now a visible icon-and-text button at the top left, before the menu, using the existing home action. The duplicate menu entry is removed. An independent in-app browser tab confirmed the button is visible without opening the menu and a single click navigates to `/`; no console warnings or errors were recorded. Other viewport sizes remain unverified.
 
 - Krita/storage decoupling: node registration and existing-node recognition no longer depend on the shared-storage flag. Verified on 2026-10-23 in a temporary standard web preview: new canvas -> extension nodes -> Krita Link -> panel showed Krita disconnected with a readable missing-bridge message. In the shared branch preview, an existing Krita node showed connected. Both pages had no console warnings/errors; the temporary server was stopped and no real artwork was modified. Real image reads, write-back, and generation still need user acceptance.
