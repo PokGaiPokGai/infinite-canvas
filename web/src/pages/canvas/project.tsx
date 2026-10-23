@@ -56,6 +56,7 @@ import { useAgentStore } from "@/stores/use-agent-store";
 import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
 import { useAgentBridge } from "@/pages/canvas/hooks/use-agent-bridge";
 import { usePluginHost } from "@/pages/canvas/hooks/use-plugin-host";
+import { kritaAutoReadDelay } from "@/lib/canvas/krita-auto-read";
 import { useKritaAutoRead } from "@/pages/canvas/hooks/use-krita-auto-read";
 import { useKritaAutoWrite } from "@/pages/canvas/hooks/use-krita-auto-write";
 import { buildNodeMentionReferences, getGroupResourceNodes, isCanvasReferenceNode, type CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
@@ -902,7 +903,7 @@ function InfiniteCanvasPage() {
     const autoReadBindings = useMemo(() => nodes.flatMap((node) => {
         const link = node.metadata?.krita;
         return node.type === KRITA_LINK && link?.kind === "link" && link.mode === "read" && link.autoRead && link.documentId
-            ? [`${node.id}:${link.documentId}:${link.layerId || ""}`] : [];
+            ? [`${node.id}:${link.documentId}:${link.layerId || ""}:${kritaAutoReadDelay(link.autoReadDelaySeconds)}`] : [];
     }).sort().join("|"), [nodes]);
     useKritaAutoRead({ projectId, projectLoaded, bindings: autoReadBindings, nodesRef, setNodes, retryMs: 10_000 });
     useKritaAutoWrite({ projectId, projectLoaded, nodes, connections, host: pluginHost, theme });

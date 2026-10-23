@@ -141,6 +141,15 @@
 }
 
 @layer utilities {
+    .krita-link-aurora, .krita-read-refresh {
+        --krita-link-orange: #f79438;
+        --krita-link-pink: #ec5187;
+        --krita-link-purple: #aa63d5;
+        --krita-link-blue: #508cd4;
+        --krita-link-green: #5ac9ac;
+        --link-border-gradient: linear-gradient(135deg, var(--krita-link-orange) 0%, var(--krita-link-pink) 28%, var(--krita-link-purple) 53%, var(--krita-link-blue) 77%, var(--krita-link-green) 100%);
+    }
+
     .blender-link-aurora {
         --blender-link-orange: #e87d0d;
         --link-border-gradient: linear-gradient(135deg, #fbc38b 0%, var(--blender-link-orange) 28%, #d85a0b 53%, #f39435 77%, #ffd2a3 100%);

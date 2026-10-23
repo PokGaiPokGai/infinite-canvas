@@ -1,6 +1,6 @@
 export type KritaLayer = { id: string; name: string; type: string; locked?: boolean; alphaLocked?: boolean; animated?: boolean; colorCompatible?: boolean };
 export type KritaDocument = { id: string; name: string; width: number; height: number; colorModel: string; colorDepth: string; colorProfile: string; layers: KritaLayer[] };
-export type KritaStatus = { connected: boolean; version: 1; sessionId?: string; activityRevision?: number; documents: KritaDocument[]; error?: string };
+export type KritaStatus = { connected: boolean; version: 1; sessionId?: string; activityRevision?: number; autoReadDelayVersion?: 1; documents: KritaDocument[]; error?: string };
 export type KritaSnapshot = { id: string; sessionId: string; documentId: string; documentName: string; layerId?: string; width: number; height: number; colorModel: string; colorDepth: string; colorProfile: string; sha256: string; pixelSha256?: string; createdAt: string; imageUrl: string };
 export type KritaSnapshotCheck = KritaSnapshot | { unchanged: true; pixelSha256: string; sessionId: string; documentId: string; layerId?: string };
 export type KritaPresetId = "draft" | "detail";
@@ -16,6 +16,7 @@ export type KritaLinkMetadata = {
     kind: "link";
     mode: "read" | "write";
     autoRead?: boolean;
+    autoReadDelaySeconds?: number;
     lastReadKind?: "manual" | "auto";
     documentId?: string;
     layerId?: string;

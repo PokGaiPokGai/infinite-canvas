@@ -170,3 +170,13 @@ Shift 多选图片，点击选区上方「版本堆叠」。点击堆叠展开�
 - 导出：扩展节点 → 导出预设。连接图片或选定结果，设置尺寸、格式、等比留白／裁边、透明／底色、命名模板与子目录。保存后可在其他节点载入。ZIP 包含相对子目录和可选 manifest.json；目录导出由浏览器选择授权目录，每次新建独立文件夹。目录选择不支持时使用 ZIP。透明只保留原有 Alpha 与留白，不做自动抠图。
 
 仅验证本机数据和图像处理链；真实生成、Krita／Blender 写回和系统原生目录选择器仍需人工验收。
+
+## 新一轮功能优化分支
+
+`codex/canvas-ux-next` 从本地 `main` 的 `c5b7be3` 创建，包含已合并的公共面板、主页入口及 Blender Link。双击当前 worktree 根目录的 `启动功能优化版.cmd`，打开 [功能优化画布](http://127.0.0.1:3011/canvas)。
+
+- 源码来自本 worktree 的 `web/`；配置为 `local/vite.canvas-ux-next.config.ts`。复用 `Start-CanvasUX.ps1`，本入口指定 `canvas-ux-next` 和端口 `3011`。
+- 复用 `3002` 上已有的共享存储、Krita 和生成服务；服务未运行时启动本 worktree 的 `local/codex-image-bridge.mjs`，通过 `INFINITE_CANVAS_APP_ROOT` 指向主目录，继续使用原共享数据库、任务及工具连接配置。ComfyUI 沿用 `8188`，共享数据库仍在主目录 `.local/app-data/canvas.sqlite`。
+- 前端日志和所有权文件保存在当前 worktree 的 `.local/canvas-ux-next-*`；本入口启动的共享桥接另记在 `.local/codex-image-owner.json`，日志为 `.local/codex-image-*.log`。重复启动复用已有服务，`3010` 旧体验分支继续独立运行；启动器不会替换正在运行的其他分支桥接。
+- `/__canvas-ux-next` 用于确认分支身份；`/local-data/meta`、`/krita-link/status` 验证共享数据和 Krita 状态，Krita 未打开时显示未连接且不阻止启动。当前已按用户授权更新共享桥接及 Krita 插件，以支持可调 Auto 停笔等待；插件备份在本 worktree 被忽略的 `.local/krita-auto-delay-backup/`。真实绘画时机仍待验收。
+- 尚待验证：双击入口的完整默认浏览器打开流程、真实生成、Krita／Blender 读写；脚本与接口验证结果见待测试记录。

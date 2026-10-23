@@ -1,10 +1,11 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
-import { ArrowUpRight, Brush, Settings2, X } from "lucide-react";
+import { useEffect, useId, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
+import { ArrowUpRight, Brush, RefreshCw, Settings2, X } from "lucide-react";
 import { getNodeDefinition, registerNodeDefinitions } from "@/lib/canvas/node-registry";
 import { imageMetadata } from "@/lib/canvas/canvas-node-factory";
 import { hasKritaWriteOutput } from "@/lib/canvas/canvas-input-role";
 import { getKritaWriteDelivery } from "@/lib/canvas/krita-write-delivery";
-import { beginKritaRead } from "@/lib/canvas/krita-read-lock";
+import { kritaAutoReadDelay } from "@/lib/canvas/krita-auto-read";
+import { beginKritaRead, isKritaReading, subscribeKritaReads } from "@/lib/canvas/krita-read-lock";
 import { isConnectionOperational } from "@/lib/canvas/canvas-connection-state";
 import { KRITA_LINK, KRITA_PRESET, KRITA_SOURCE, asPng, followKritaGeneration, isKritaNodeBusy, patchKritaPreset, stopKritaWaiting, submitConfiguredKritaGeneration, submitKritaGeneration } from "@/lib/canvas/krita-link";
 import { createKritaSnapshot, getKritaImage, getKritaPresets, getKritaStatus, listKritaGenerations, returnCanvasImage, returnKritaImage, type KritaWriteTarget } from "@/services/api/krita-link";
@@ -70,6 +71,36 @@ async function captureKritaRead(ctx: CanvasNodeContext, documentId: string, laye
         if (!((current?.kind === "source" || (current?.kind === "link" && current.mode === "read")) && current.documentId === documentId && current.layerId === layerId)) throw new Error("读取期间绑定文档或图层已变化，请重新读取。");
         ctx.updateMetadata({ ...imageMetadata(image), errorDetails: undefined, krita: { ...current, snapshot, lastReadKind: "manual" } });
     } finally { finishRead(); }
+}
+
+const useKritaReading = (ctx: CanvasNodeContext) => useSyncExternalStore(subscribeKritaReads, () => isKritaReading(ctx.projectId, ctx.node.id));
+
+async function refreshKritaRead(ctx: CanvasNodeContext, documentId?: string, layerId?: string) {
+    if (!documentId || isKritaReading(ctx.projectId, ctx.node.id)) return;
+    ctx.updateMetadata({ errorDetails: undefined });
+    try { await captureKritaRead(ctx, documentId, layerId); }
+    catch (reason) {
+        const current = ctx.getNode(ctx.node.id)?.metadata?.krita;
+        if ((current?.kind === "source" || (current?.kind === "link" && current.mode === "read")) && current.documentId === documentId && current.layerId === layerId) ctx.updateMetadata({ errorDetails: `读取失败：${textOf(reason)}` });
+    }
+}
+
+function KritaReadButton({ ctx }: { ctx: CanvasNodeContext }) {
+    const gradientId = useId();
+    const reading = useKritaReading(ctx);
+    const source = ctx.node.metadata?.krita;
+    const documentId = source?.kind === "source" || (source?.kind === "link" && source.mode === "read") ? source.documentId : undefined;
+    const capture = () => {
+        const current = ctx.getNode(ctx.node.id)?.metadata?.krita;
+        if (current?.kind === "source" || (current?.kind === "link" && current.mode === "read")) void refreshKritaRead(ctx, current.documentId, current.layerId);
+    };
+    return <button type="button" aria-label="读取当前画面" aria-busy={reading} title={!documentId ? "先在控制面板绑定 Krita 文档" : reading ? "正在读取当前画面…" : "读取当前画面"} disabled={reading || !documentId} data-canvas-no-zoom className="krita-read-refresh grid size-8 shrink-0 place-items-center rounded-md hover:bg-black/5 dark:hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40" onMouseDown={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); void capture(); }}>
+        <RefreshCw aria-hidden="true" stroke={`url(#${gradientId})`} className={`size-4 ${reading ? "motion-safe:animate-spin" : ""}`}>
+            <defs><linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor="var(--krita-link-orange)" /><stop offset="28%" stopColor="var(--krita-link-pink)" /><stop offset="53%" stopColor="var(--krita-link-purple)" /><stop offset="77%" stopColor="var(--krita-link-blue)" /><stop offset="100%" stopColor="var(--krita-link-green)" />
+            </linearGradient></defs>
+        </RefreshCw>
+    </button>;
 }
 
 export async function sendKritaWrite(ctx: CanvasNodeContext, link: KritaLinkMetadata, status: KritaStatus | null, image: WriteInput, deliveryId?: string, deliveryKey?: string) {
@@ -164,11 +195,12 @@ function fitLinkToPreview(ctx: CanvasNodeContext, imageWidth: number, imageHeigh
 function LinkContent({ ctx }: { ctx: CanvasNodeContext }) {
     const link: KritaLinkMetadata = ctx.node.metadata?.krita?.kind === "link" ? ctx.node.metadata.krita : { kind: "link", mode: "read" };
     const [busy, setBusy] = useState(false);
+    const reading = useKritaReading(ctx);
     const inputs = link.mode === "write" ? writeInputs(ctx) : null;
     const image = inputs?.count === 1 && inputs.images.length === 1 ? inputs.images[0] : null;
     const preview = link.mode === "read" ? link.snapshot && ctx.node.metadata?.content : link.commandId ? ctx.node.metadata?.content : image?.url;
     const writeKey = `write:${ctx.projectId}:${ctx.node.id}`;
-    const modeLocked = busy || submittingNodes.has(writeKey) || writingNodes.has(writeKey) || (!!link.commandId && !link.returnedLayerId);
+    const modeLocked = busy || reading || submittingNodes.has(writeKey) || writingNodes.has(writeKey) || (!!link.commandId && !link.returnedLayerId);
     const switchMode = async (mode: "read" | "write") => {
         const current = ctx.getNode(ctx.node.id)?.metadata?.krita;
         if (current?.kind !== "link" || mode === current.mode || modeLocked) return;
@@ -176,6 +208,7 @@ function LinkContent({ ctx }: { ctx: CanvasNodeContext }) {
         try {
             if (current.mode === "write" && current.commandId) await ctx.storage.remove(writeKey);
             ctx.updateMetadata({ content: undefined, storageKey: undefined, status: "idle", naturalWidth: undefined, naturalHeight: undefined, mimeType: undefined, bytes: undefined, errorDetails: undefined, krita: { ...current, mode, autoRead: false, snapshot: undefined, commandId: undefined, deliveryId: undefined, sourceDeliveryKey: undefined, expectedPriorLayerSha256: undefined, targetSnapshotId: undefined, targetDocumentName: undefined, targetSessionId: undefined, sourceImage: undefined, returnedLayerId: undefined, returnedAt: undefined } });
+            if (mode === "read") await refreshKritaRead(ctx, current.documentId, current.layerId);
         } catch (reason) { ctx.updateMetadata({ errorDetails: textOf(reason) }); }
         finally { setBusy(false); }
     };
@@ -184,10 +217,10 @@ function LinkContent({ ctx }: { ctx: CanvasNodeContext }) {
         <div className="pointer-events-none absolute inset-x-3 top-3 z-10 flex items-start justify-between" data-canvas-no-zoom>
             <div className="grid size-8 shrink-0 place-items-center rounded-lg backdrop-blur-sm" style={{ background: ctx.theme.toolbar.panel }} title="Krita 连接"><img src="/icons/krita.png" alt="Krita" className="size-5" /></div>
             <div className="pointer-events-auto flex shrink-0 rounded-md border p-0.5 backdrop-blur-sm" style={{ borderColor: ctx.theme.node.stroke, background: ctx.theme.toolbar.panel }} role="group" aria-label="Krita Link 模式" onMouseDown={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
-                {(["read", "write"] as const).map((mode) => <button key={mode} type="button" aria-pressed={link.mode === mode} title={modeLocked && link.mode !== mode ? "请等待当前写入完成或确认其结果" : undefined} disabled={modeLocked && link.mode !== mode} className={`rounded px-2 py-1 text-[11px] disabled:cursor-not-allowed disabled:opacity-40 ${link.mode === mode ? "font-semibold" : "opacity-65 hover:opacity-100"}`} style={link.mode === mode ? { background: ctx.theme.toolbar.activeBg } : undefined} onClick={() => void switchMode(mode)}>{mode === "read" ? "读取" : "写回"}</button>)}
+                {(["read", "write"] as const).map((mode) => <button key={mode} type="button" aria-pressed={link.mode === mode} title={modeLocked && link.mode !== mode ? "请等待读取或写入完成，并确认待处理结果" : undefined} disabled={modeLocked && link.mode !== mode} className={`rounded px-2 py-1 text-[11px] disabled:cursor-not-allowed disabled:opacity-40 ${link.mode === mode ? "font-semibold" : "opacity-65 hover:opacity-100"}`} style={link.mode === mode ? { background: ctx.theme.toolbar.activeBg } : undefined} onClick={() => void switchMode(mode)}>{mode === "read" ? "读取" : "写回"}</button>)}
             </div>
         </div>
-        {link.mode === "read" ? <button type="button" role="switch" aria-label="Krita 自动读取" aria-checked={!!link.autoRead} disabled={!link.documentId} title={link.documentId ? "Auto 只更新读取图片；生图仍需手动，Auto 更新不会触发写回" : "先在控制面板绑定 Krita 文档"} className="absolute bottom-3 right-3 z-10 flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs backdrop-blur-sm disabled:cursor-not-allowed disabled:opacity-50" style={{ background: link.autoRead ? ctx.theme.toolbar.activeBg : ctx.theme.toolbar.panel, borderColor: ctx.theme.node.stroke }} data-canvas-no-zoom onMouseDown={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); const current = ctx.getNode(ctx.node.id)?.metadata?.krita; if (current?.kind === "link" && current.mode === "read" && current.documentId) ctx.updateMetadata({ errorDetails: undefined, krita: { ...current, autoRead: !current.autoRead } }); }}><span>Auto</span><span aria-hidden="true" className="flex h-4 w-7 items-center rounded-full p-0.5 transition-colors" style={{ background: link.autoRead ? ctx.theme.node.text : ctx.theme.node.stroke }}><span className={`size-3 rounded-full transition-transform ${link.autoRead ? "translate-x-3" : "translate-x-0"}`} style={{ background: ctx.theme.node.panel }} /></span></button> : null}
+        {link.mode === "read" ? <div className="absolute bottom-3 right-3 z-10 flex items-center gap-2"><button type="button" role="switch" aria-label="Krita 自动读取" aria-checked={!!link.autoRead} disabled={!link.documentId} title={link.documentId ? "Auto 只更新读取图片；生图仍需手动，Auto 更新不会触发写回" : "先在控制面板绑定 Krita 文档"} className="flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs backdrop-blur-sm disabled:cursor-not-allowed disabled:opacity-50" style={{ background: link.autoRead ? ctx.theme.toolbar.activeBg : ctx.theme.toolbar.panel, borderColor: ctx.theme.node.stroke }} data-canvas-no-zoom onMouseDown={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); const current = ctx.getNode(ctx.node.id)?.metadata?.krita; if (current?.kind === "link" && current.mode === "read" && current.documentId) ctx.updateMetadata({ errorDetails: undefined, krita: { ...current, autoRead: !current.autoRead } }); }}><span>Auto</span><span aria-hidden="true" className="flex h-4 w-7 items-center rounded-full p-0.5 transition-colors" style={{ background: link.autoRead ? ctx.theme.node.text : ctx.theme.node.stroke }}><span className={`size-3 rounded-full transition-transform ${link.autoRead ? "translate-x-3" : "translate-x-0"}`} style={{ background: ctx.theme.node.panel }} /></span></button><KritaReadButton ctx={ctx} /></div> : null}
     </div>;
 }
 
@@ -284,10 +317,38 @@ function LinkPanel({ ctx, onClose }: { ctx: CanvasNodeContext; onClose: () => vo
 
 function SourceContent({ ctx }: { ctx: CanvasNodeContext }) {
     const snapshot = readSnapshot(ctx.node);
-    return <div className="flex h-full flex-col gap-2 p-3" style={{ color: ctx.theme.node.text }}>
+    return <div className="relative flex h-full flex-col gap-2 p-3 pb-14" style={{ color: ctx.theme.node.text }}>
         {snapshot && ctx.node.metadata?.content ? <img src={ctx.node.metadata.content} alt={`Krita 快照：${snapshot.documentName}`} draggable={false} className="min-h-0 flex-1 object-contain" /> : <div className="flex flex-1 items-center justify-center text-xs opacity-60">选中文档后，手动读取一次画面</div>}
         <div className="truncate text-xs">{snapshot ? `${snapshot.documentName} · ${snapshot.width} × ${snapshot.height}` : ctx.node.type === KRITA_LINK ? "Krita Link · 读取" : "Krita 输入"}</div>
         <div className="text-[11px] opacity-60">静态快照 · 拖出连线可建立多个分支</div>
+        <div className="absolute bottom-3 right-3 z-10"><KritaReadButton ctx={ctx} /></div>
+    </div>;
+}
+
+function AutoReadDelay({ ctx, link }: { ctx: CanvasNodeContext; link: KritaLinkMetadata }) {
+    const inputId = useId();
+    const seconds = kritaAutoReadDelay(link.autoReadDelaySeconds);
+    const [draft, setDraft] = useState(String(seconds));
+    const [invalid, setInvalid] = useState(false);
+    useEffect(() => { setDraft(String(seconds)); setInvalid(false); }, [seconds]);
+    const parsed = Number(draft);
+    const current = draft.trim() && Number.isFinite(parsed) && parsed > 0 ? parsed : seconds;
+    const commit = (next = draft) => {
+        const value = Number(next);
+        if (!next.trim() || !Number.isFinite(value) || value <= 0) { setInvalid(true); return; }
+        setDraft(String(value));
+        setInvalid(false);
+        const latest = ctx.getNode(ctx.node.id)?.metadata?.krita;
+        if (latest?.kind === "link" && value !== kritaAutoReadDelay(latest.autoReadDelaySeconds)) ctx.updateMetadata({ krita: { ...latest, autoReadDelaySeconds: value } });
+    };
+    const stepClass = "grid h-full w-10 shrink-0 place-items-center bg-transparent text-lg transition hover:opacity-60 disabled:cursor-not-allowed disabled:opacity-30";
+    return <div className="space-y-1.5"><label htmlFor={inputId}>Auto 停笔等待（秒）</label>
+        <div className="flex h-9 w-full items-center overflow-hidden rounded-full border text-sm focus-within:ring-1" style={controlStyle(ctx)}>
+            <button type="button" aria-label="减少停笔等待 1 秒" disabled={current <= 1} className={stepClass} onMouseDown={(event) => event.preventDefault()} onClick={() => commit(String(current - 1))}>−</button>
+            <input id={inputId} type="number" step="any" aria-invalid={invalid} title="停止绘画后等待此时间再刷新" className="h-full min-w-0 flex-1 border-x bg-transparent px-2 text-center outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" style={{ borderColor: ctx.theme.node.stroke }} value={draft} onChange={(event) => { setDraft(event.target.value); setInvalid(false); }} onBlur={() => commit()} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); } }} />
+            <button type="button" aria-label="增加停笔等待 1 秒" className={stepClass} onMouseDown={(event) => event.preventDefault()} onClick={() => commit(String(current + 1))}>+</button>
+        </div>
+        {invalid ? <span role="alert" className="block text-xs">请输入大于 0 的秒数</span> : null}
     </div>;
 }
 
@@ -297,24 +358,19 @@ function SourcePanel({ ctx, onClose }: { ctx: CanvasNodeContext; onClose: () => 
     const source: KritaSourceMetadata | KritaLinkMetadata = current?.kind === "source" || (current?.kind === "link" && current.mode === "read") ? current : linked ? { kind: "link", mode: "read" } : { kind: "source" };
     const [status, setStatus] = useState<KritaStatus | null>(null);
     const [connectionError, setConnectionError] = useState("");
-    const [error, setError] = useState("");
     const [refreshing, setRefreshing] = useState(true);
-    const [capturing, setCapturing] = useState(false);
+    const capturing = useKritaReading(ctx);
     const refresh = async (signal?: AbortSignal) => {
-        setRefreshing(true); setConnectionError(""); setError("");
+        setRefreshing(true); setConnectionError("");
         try { setStatus(await getKritaStatus(signal)); } catch (reason) { if (!isAbort(reason)) { setStatus(null); setConnectionError(textOf(reason)); } }
         finally { if (!signal?.aborted) setRefreshing(false); }
     };
     useEffect(() => { const controller = new AbortController(); void refresh(controller.signal); return () => controller.abort(); }, [ctx.node.id]);
     const connected = status?.connected === true;
     const document = connected ? status.documents.find((item) => item.id === source.documentId) : undefined;
-    const bind = (documentId?: string, layerId?: string) => ctx.updateMetadata({ content: undefined, storageKey: undefined, status: "idle", errorDetails: undefined, krita: linked ? { ...source, kind: "link", mode: "read", autoRead: !!documentId && source.kind === "link" && !!source.autoRead, documentId, layerId, snapshot: undefined } : { kind: "source", documentId, layerId } });
-    const capture = async () => {
-        if (!connected || !document || capturing) return;
-        setCapturing(true); setError("");
-        try {
-            await captureKritaRead(ctx, document.id, source.layerId);
-        } catch (reason) { setError(textOf(reason)); } finally { setCapturing(false); }
+    const bind = (documentId?: string, layerId?: string) => {
+        ctx.updateMetadata({ content: undefined, storageKey: undefined, status: "idle", errorDetails: undefined, krita: linked ? { ...source, kind: "link", mode: "read", autoRead: !!documentId && source.kind === "link" && !!source.autoRead, documentId, layerId, snapshot: undefined } : { kind: "source", documentId, layerId } });
+        void refreshKritaRead(ctx, documentId, layerId);
     };
     return <PanelFrame ctx={ctx} title={linked ? "Krita Link · 读取" : "Krita 输入"} onClose={onClose}>
         <div className="flex items-center justify-between gap-2"><span className="text-xs">{connected ? "Krita 已连接" : refreshing && !status ? "正在检查 Krita…" : "Krita 未连接"}</span><button className={buttonClass} disabled={refreshing || capturing} onClick={() => void refresh()}>{refreshing ? "正在读取…" : "刷新文档"}</button></div>
@@ -322,14 +378,10 @@ function SourcePanel({ ctx, onClose }: { ctx: CanvasNodeContext; onClose: () => 
         {status?.error ? <p role="alert" className="break-words text-xs">{status.error}</p> : null}
         {!connected && !refreshing ? <p role="status" className="text-xs leading-5 opacity-60">请打开 Krita 和画稿后刷新文档；已有快照与绑定会保留。</p> : null}
         {connected ? <label className="block space-y-1.5"><span>绑定文档</span><select aria-label="绑定文档" className={fieldClass} style={controlStyle(ctx)} value={document?.id || ""} disabled={capturing} onChange={(event) => { const next = event.target.value; if (next !== source.documentId) bind(next); }}><option value="" disabled hidden>请选择文档</option>{!status.documents.length ? <option disabled>未打开文档</option> : null}{status.documents.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.width} × {item.height}</option>)}</select></label> : null}
-        {document ? <>
-        <label className="block space-y-1.5"><span>读取范围</span><select aria-label="读取范围" className={fieldClass} style={controlStyle(ctx)} value={source.layerId || ""} disabled={capturing} onChange={(event) => { const next = event.target.value || undefined; if (next !== source.layerId) bind(source.documentId, next); }}><option value="">完整画面（可见图层合成）</option>{source.layerId && !document.layers.some((item) => item.id === source.layerId) ? <option value={source.layerId}>原图层暂不可用</option> : null}{document.layers.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-        <p className="text-xs leading-5 opacity-60">{linked ? "可手动读取，也可在节点右下角开启 Auto 读取绑定的文档与图层。不会自动生成或写回；切换活动文档不会改变绑定。" : "手动读取，不自动生成；切换活动文档不会改变绑定。"}</p>
-        <button className={`${buttonClass} w-full border`} style={{ borderColor: ctx.theme.node.stroke }} disabled={capturing || (!!source.layerId && !document.layers.some((item) => item.id === source.layerId))} onClick={() => void capture()}>{capturing ? "正在保存快照…" : "读取当前画面"}</button>
-        </> : null}
-        {error ? <p role="alert" className="break-words rounded border px-2.5 py-2 text-xs leading-5" style={{ borderColor: ctx.theme.node.stroke }}>读取失败：{error}</p> : null}
-        {linked && (document || !ctx.node.metadata?.errorDetails?.startsWith("Auto 读取：原绑定文档暂未打开")) && ctx.node.metadata?.errorDetails ? <p role="alert" className="break-words rounded border px-2.5 py-2 text-xs leading-5" style={{ borderColor: ctx.theme.node.stroke }}>{ctx.node.metadata.errorDetails}</p> : null}
-        {source.snapshot ? <div className="space-y-1 break-words text-xs leading-5"><div>已读取：{source.snapshot.documentName}</div><div>{new Date(source.snapshot.createdAt).toLocaleString()} · {source.snapshot.width} × {source.snapshot.height}</div><div className="opacity-60">{source.snapshot.colorModel} / {source.snapshot.colorDepth} · {source.snapshot.colorProfile}</div><div className="opacity-60">快照 {source.snapshot.id.slice(0, 8)}；重新读取不会更改已提交任务。</div></div> : null}
+        {document ? <label className="block space-y-1.5"><span>选择图层</span><select aria-label="选择图层" className={fieldClass} style={controlStyle(ctx)} value={source.layerId || ""} disabled={capturing} onChange={(event) => { const next = event.target.value || undefined; if (next !== source.layerId) bind(source.documentId, next); }}><option value="">完整画面（可见图层合成）</option>{source.layerId && !document.layers.some((item) => item.id === source.layerId) ? <option value={source.layerId}>原图层暂不可用</option> : null}{document.layers.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label> : null}
+        {source.kind === "link" ? <AutoReadDelay ctx={ctx} link={source} /> : null}
+        {(document || !ctx.node.metadata?.errorDetails?.startsWith("Auto 读取：原绑定文档暂未打开")) && ctx.node.metadata?.errorDetails ? <p role="alert" className="break-words rounded border px-2.5 py-2 text-xs leading-5" style={{ borderColor: ctx.theme.node.stroke }}>{ctx.node.metadata.errorDetails}</p> : null}
+        {source.snapshot ? <div className="space-y-1 break-words text-xs leading-5"><div>已读取：{source.snapshot.documentName}</div><div>{new Date(source.snapshot.createdAt).toLocaleString()} · {source.snapshot.width} × {source.snapshot.height}</div><div className="opacity-60">{source.snapshot.colorModel} / {source.snapshot.colorDepth} · {source.snapshot.colorProfile}</div></div> : null}
     </PanelFrame>;
 }
 
