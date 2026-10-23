@@ -1,6 +1,7 @@
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData, type ConnectionHandle, type ViewportTransform } from "@/types/canvas";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
 import { hasCanvasNodeHandle } from "@/lib/canvas/canvas-connection-state";
+import { isImageLinkNode } from "@/lib/canvas/canvas-input-role";
 
 export function nodeBounds(nodes: CanvasNodeData[]) {
     return nodes.reduce(
@@ -145,14 +146,16 @@ export function normalizeConnection(firstNodeId: string, secondNodeId: string, n
     const second = nodes.find((node) => node.id === secondNodeId);
     if (!first || !second || first.id === second.id) return null;
     const valid = (from: CanvasNodeData, to: CanvasNodeData) => hasCanvasNodeHandle(from, "source") && hasCanvasNodeHandle(to, "target") ? { fromNodeId: from.id, toNodeId: to.id } : null;
-    if (first.type === "krita-link:link" || second.type === "krita-link:link") {
+    if (isImageLinkNode(first) || isImageLinkNode(second)) {
         const from = firstHandleType === "source" ? first : second;
         const to = firstHandleType === "source" ? second : first;
         if (to.type === CanvasNodeType.Group) return null;
-        if (from.type === CanvasNodeType.Config && (to.type !== "krita-link:link" || (from.metadata?.generationMode || "image") !== "image")) return null;
+        if (from.type === CanvasNodeType.Config && (!isImageLinkNode(to) || (from.metadata?.generationMode || "image") !== "image")) return null;
         if (from.type === "krita-link:link" && from.metadata?.krita?.kind !== "link") return null;
         if (to.type === "krita-link:link" && (to.metadata?.krita?.kind !== "link" || to.metadata.krita.mode !== "write")) return null;
-        if (to.type === "krita-link:link" && from.type !== CanvasNodeType.Config && from.type !== CanvasNodeType.Image && from.type !== "krita-link:source" && from.type !== "krita-link:link" && getNodeDefinition(from.type)?.resource?.(from)?.kind !== "image") return null;
+        if (from.type === "blender-link:link" && !from.metadata?.blender) return null;
+        if (to.type === "blender-link:link" && to.metadata?.blender?.mode !== "write") return null;
+        if (isImageLinkNode(to) && from.type !== CanvasNodeType.Config && from.type !== CanvasNodeType.Image && from.type !== "krita-link:source" && !isImageLinkNode(from) && getNodeDefinition(from.type)?.resource?.(from)?.kind !== "image") return null;
         return valid(from, to);
     }
     if (second.type === CanvasNodeType.Group) return null;

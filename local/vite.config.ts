@@ -5,6 +5,10 @@ import baseConfig from "../web/vite.config";
 
 // Keep ComfyUI's existing loopback configuration; the browser uses the same origin as the canvas.
 const proxy = {
+    "/blender-link": {
+        target: "http://127.0.0.1:3002", changeOrigin: false,
+        rewrite: (path: string) => path.replace(/^\/blender-link/, "/blender"),
+    },
     "/krita-link": {
         target: "http://127.0.0.1:3002", changeOrigin: false,
         rewrite: (path: string) => path.replace(/^\/krita-link/, "/krita"),

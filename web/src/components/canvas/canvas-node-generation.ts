@@ -6,7 +6,7 @@ import type { ReferenceImage } from "@/types/image";
 import type { ReferenceAudio, ReferenceVideo } from "@/types/media";
 import { CanvasNodeType, type CanvasConnection, type CanvasInputRole, type CanvasNodeData } from "@/types/canvas";
 import { getGenerationResourceConnections, getGroupResourceNodes } from "@/lib/canvas/canvas-resource-references";
-import { canvasInputRoleLabel, isKritaReadInputNode, isKritaWriteInputNode } from "@/lib/canvas/canvas-input-role";
+import { canvasInputRoleLabel, isImageLinkNode, isKritaReadInputNode, isKritaWriteInputNode } from "@/lib/canvas/canvas-input-role";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
 import { getCanvasConfigOutput } from "@/lib/canvas/canvas-config-output";
 
@@ -160,7 +160,7 @@ export function buildNodeGenerationInputs(nodeId: string, nodes: CanvasNodeData[
         const resources = node.type === CanvasNodeType.Group ? [] : readNodeGenerationResource(node);
         // Older Krita connections may have been created before the first snapshot, without a role.
         // Give only an actual image from a read node the default role; other legacy edges keep their semantics.
-        const role: CanvasInputRole | undefined = connection.role ?? ((isKritaReadInputNode(node) || isKritaWriteInputNode(node)) && resources.some((input) => input.type === "image") ? "reference" : undefined);
+        const role: CanvasInputRole | undefined = connection.role ?? ((isImageLinkNode(node) || isKritaReadInputNode(node) || isKritaWriteInputNode(node)) && resources.some((input) => input.type === "image") ? "reference" : undefined);
         const edgeInput = { connectionId: connection.id, role, instruction: connection.instruction, order: connection.order };
         if (node.type === CanvasNodeType.Group) {
             const children = getGroupResourceNodes(node.id, nodes).flatMap(readNodeGenerationResource).map((input) => ({ ...input, ...edgeInput }));

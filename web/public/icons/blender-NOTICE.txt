@@ -1,0 +1,8 @@
+Blender application icon attribution
+
+Asset: blender.svg, copied unmodified from Blender's official source repository.
+Official upstream asset: https://github.com/blender/blender/blob/main/release/freedesktop/icons/scalable/apps/blender.svg
+Logo information: https://www.blender.org/about/logo/
+Trademark policy: https://www.blender.org/about/trademark-policy/
+
+The Blender name and logo are trademarks of Blender Foundation. This separate third-party asset is not relicensed under this repository's MIT license. The icon identifies the Blender connection in this independent application; its use does not imply Blender Foundation endorsement or official association.

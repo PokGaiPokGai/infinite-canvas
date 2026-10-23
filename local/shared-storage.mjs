@@ -246,7 +246,7 @@ function unionImport(namespace, key, sourceValue, currentValue) {
  * The existing bridge should keep its Host/Origin guard before this call and proxy /storage unchanged.
  * Tests may pass { dataDirectory: scratchPath }; close() closes SSE connections and SQLite.
  */
-export function createSharedStorage({ dataDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..', '.local', 'app-data') } = {}) {
+export function createSharedStorage({ dataDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..', '.local', 'app-data'), canvasOrigin = ORIGIN } = {}) {
     mkdirSync(dataDirectory, { recursive: true });
     const database = new DatabaseSync(join(dataDirectory, 'canvas.sqlite'));
     const schema = database.prepare('PRAGMA user_version').get().user_version;
@@ -453,11 +453,11 @@ export function createSharedStorage({ dataDirectory = resolve(dirname(fileURLToP
             const url = new URL(request.url, 'http://127.0.0.1:3002');
             const isEvents = path === '/storage/events' && request.method === 'GET';
             const origin = request.headers.origin, site = request.headers['sec-fetch-site'];
-            if ((origin && origin !== ORIGIN) || (site && site !== 'same-origin')) throw new StorageError(403, '拒绝跨站访问共享数据。');
+            if ((origin && origin !== canvasOrigin) || (site && site !== 'same-origin')) throw new StorageError(403, '拒绝跨站访问共享数据。');
             if (isEvents) {
-                if (origin !== ORIGIN && site !== 'same-origin') throw new StorageError(403, '请从本机画布订阅数据变更。');
+                if (origin !== canvasOrigin && site !== 'same-origin') throw new StorageError(403, '请从本机画布订阅数据变更。');
             } else if (request.headers['x-infinite-canvas-storage'] !== '1') throw new StorageError(403, '请从本机画布访问共享数据。');
-            if (request.method !== 'GET' && origin !== ORIGIN) throw new StorageError(403, '共享数据只能由本机画布修改。');
+            if (request.method !== 'GET' && origin !== canvasOrigin) throw new StorageError(403, '共享数据只能由本机画布修改。');
 
             if (request.method === 'GET' && path === '/storage/meta') {
                 respond(response, 200, { schemaVersion: 1, revision: revision(), migrationCount: database.prepare("SELECT count(*) AS count FROM storage_imports WHERE status = 'committed'").get().count });

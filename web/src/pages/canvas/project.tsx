@@ -42,6 +42,7 @@ import { Minimap } from "@/components/canvas/canvas-mini-map";
 import { CanvasNode } from "@/components/canvas/canvas-node";
 import { isKritaDockedNode, isKritaResultNode } from "@/components/canvas/krita-link-nodes";
 import { KRITA_LINK } from "@/lib/canvas/krita-link";
+import { BLENDER_LINK, hasBlenderWriteOutput } from "@/lib/canvas/blender-link";
 import { CanvasNodePromptPanel, type CanvasNodeGenerationMode } from "@/components/canvas/canvas-node-prompt-panel";
 import { CanvasToolbar } from "@/components/canvas/canvas-toolbar";
 import { AssetPickerModal, type InsertAssetPayload } from "@/components/canvas/asset-picker-modal";
@@ -646,7 +647,7 @@ function InfiniteCanvasPage() {
             }
             const { fromNodeId, toNodeId } = connection;
             const exists = connectionsRef.current.some((conn) => conn.fromNodeId === fromNodeId && conn.toNodeId === toNodeId);
-            if (!exists && nodesRef.current.some((node) => (node.id === fromNodeId || node.id === toNodeId) && (node.type === KRITA_LINK || node.type === CanvasNodeType.Config)) && wouldCreateConnectionCycle(fromNodeId, toNodeId, connectionsRef.current)) {
+            if (!exists && nodesRef.current.some((node) => (node.id === fromNodeId || node.id === toNodeId) && (node.type === KRITA_LINK || node.type === BLENDER_LINK || node.type === CanvasNodeType.Config)) && wouldCreateConnectionCycle(fromNodeId, toNodeId, connectionsRef.current)) {
                 message.warning("这条连线会形成循环，请调整连接方向。");
                 return;
             }
@@ -2413,6 +2414,10 @@ function InfiniteCanvasPage() {
                 message.error("已连接的 Krita 写回尚未成功；请先在该节点手动写入，或断开这条连线。");
                 return;
             }
+            if (sourceNode?.type === CanvasNodeType.Config && connectionsRef.current.some(connection => connection.toNodeId === nodeId && nodesRef.current.some(node => node.id === connection.fromNodeId && node.type === BLENDER_LINK && isConnectionOperational(connection, node, sourceNode) && (!node.metadata?.content || (node.metadata.blender?.mode === "write" && !hasBlenderWriteOutput(node)))))) {
+                message.error("已连接的 Blender 节点尚未完成读取或写回，请先在该节点完成操作。");
+                return;
+            }
             const generationConfig = buildGenerationConfig(effectiveConfig, sourceNode, mode);
             if (!isAiConfigReady(generationConfig, generationConfig.model)) {
                 openConfigDialog(true);
@@ -2874,7 +2879,7 @@ function InfiniteCanvasPage() {
 
     const handleRetryNode = useCallback(
         async (node: CanvasNodeData, imageId?: string) => {
-            if (node.type === KRITA_LINK || isKritaDockedNode(node)) {
+            if (node.type === KRITA_LINK || node.type === BLENDER_LINK || isKritaDockedNode(node)) {
                 setDialogNodeId(node.id);
                 return;
             }

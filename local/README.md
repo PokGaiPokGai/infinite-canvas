@@ -133,3 +133,7 @@ ComfyUI 原图保存到其配置的 `output/InfiniteCanvas/Canvas_*.png`，参�
 ## Krita 手动连接
 
 独立插件、手动读取源图、生成记录与回传操作见 [Krita 第一版说明](./krita-README.md)。两个应用分别打开，不使用整合启动器。
+
+## Blender 手动连接
+
+复用现有 BlenderMCP 的视口／渲染图读取和材质贴图写回见 [Blender Link 第一版说明](./blender-README.md)。

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import { useTranslation } from "react-i18next";
 import { getKritaToolbar, isKritaDockedNode, isKritaResultNode, KritaResultPanel, registerLocalKritaNodes } from "@/components/canvas/krita-link-nodes";
+import { registerLocalBlenderNodes } from "@/components/canvas/blender-link-nodes";
 
 import { requestEdit, requestGeneration, requestImageQuestion, type AiTextMessage } from "@/services/api/image";
 import { imageToDataUrl } from "@/services/image-storage";
@@ -157,6 +158,7 @@ export function usePluginHost(params: PluginHostParams) {
     // Load installed remote plugins on startup.
     useEffect(() => {
         registerLocalKritaNodes();
+        registerLocalBlenderNodes();
         void ensurePluginsLoaded();
     }, []);
 
