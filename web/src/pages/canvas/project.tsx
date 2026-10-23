@@ -25,6 +25,7 @@ import { captureVideoFrame, type VideoFramePosition } from "@/lib/canvas/canvas-
 import { App, Button, Modal } from "antd";
 import { NODE_DEFAULT_SIZE, getNodeSpec } from "@/constant/canvas";
 import { ActiveConnectionPath, ConnectionPath, ConnectionRoleBadge } from "@/components/canvas/canvas-connections";
+import { CanvasPanel, useCanvasPanel } from "@/components/canvas/canvas-panel";
 import { CanvasConfigComposer } from "@/components/canvas/canvas-config-composer";
 import { CanvasConfigNodePanel } from "@/components/canvas/canvas-config-node-panel";
 import { CanvasNodeContextMenu } from "@/components/canvas/canvas-context-menu";
@@ -226,7 +227,6 @@ function InfiniteCanvasPage() {
         initialSelectedNodes: new Map(),
         movedIds: new Set(),
     });
-    const closedPanelByNodeClickRef = useRef<string | null>(null);
 
     const config = useConfigStore((state) => state.config);
     const effectiveConfig = useEffectiveConfig();
@@ -268,7 +268,8 @@ function InfiniteCanvasPage() {
     const [projectLoaded, setProjectLoaded] = useState(false);
     const [toolbarNodeId, setToolbarNodeId] = useState<string | null>(null);
     const [nodeImageSettingsOpen, setNodeImageSettingsOpen] = useState(false);
-    const [dialogNodeId, setDialogNodeId] = useState<string | null>(null);
+    const nodePanel = useCanvasPanel();
+    const { activeId: dialogNodeId, setActiveId: setDialogNodeId, show: showNodePanel, toggle: toggleNodePanel } = nodePanel;
     const [infoNodeId, setInfoNodeId] = useState<string | null>(null);
     const [pluginManagerOpen, setPluginManagerOpen] = useState(false);
     const [cropNodeId, setCropNodeId] = useState<string | null>(null);
@@ -289,28 +290,6 @@ function InfiniteCanvasPage() {
     const [dropTargetGroupId, setDropTargetGroupId] = useState<string | null>(null);
     const [referencePickerNodeId, setReferencePickerNodeId] = useState<string | null>(null);
     const nodesRef = useRef(nodes);
-
-    useEffect(() => {
-        const isInsidePanel = (target: EventTarget | null) => {
-            const element = target instanceof Element ? target : target instanceof Node ? target.parentElement : null;
-            if (!element) return false;
-            if (element.closest("[data-node-panel]")?.getAttribute("data-node-panel") === dialogNodeId) return true;
-            return Boolean(element.closest(".ant-select-dropdown,.ant-dropdown,.ant-popover,.ant-picker-dropdown,[data-canvas-resource-mention-menu],.canvas-image-settings-popover,.canvas-video-settings-popover,.canvas-audio-settings-popover,.canvas-text-settings-popover,[data-canvas-config-mini-popover]"));
-        };
-        const onPointerDown = (event: PointerEvent) => {
-            closedPanelByNodeClickRef.current = null;
-            if (!dialogNodeId || isInsidePanel(event.target)) return;
-            closedPanelByNodeClickRef.current = dialogNodeId;
-            setDialogNodeId((current) => current === dialogNodeId ? null : current);
-        };
-        const onKeyDown = () => { closedPanelByNodeClickRef.current = null; };
-        window.addEventListener("pointerdown", onPointerDown, true);
-        window.addEventListener("keydown", onKeyDown, true);
-        return () => {
-            window.removeEventListener("pointerdown", onPointerDown, true);
-            window.removeEventListener("keydown", onKeyDown, true);
-        };
-    }, [dialogNodeId]);
 
     const connectionsRef = useRef(connections);
     const selectedNodeIdsRef = useRef(selectedNodeIds);
@@ -1436,24 +1415,20 @@ function InfiniteCanvasPage() {
         dragRef.current.initialSelectedNodes = new Map();
         dragRef.current.movedIds = new Set();
         if (wasClick && clickedNodeId) {
-            if (closedPanelByNodeClickRef.current === clickedNodeId) {
-                closedPanelByNodeClickRef.current = null;
-                return;
-            }
             const clickedNode = nodesRef.current.find((node) => node.id === clickedNodeId);
             const clickedDefinition = clickedNode ? getNodeDefinition(clickedNode.type) : undefined;
             if (clickedDefinition?.hidePanel) {
                 // Clicking a display-only plugin node selects it without opening a lower panel.
                 setDialogNodeId((current) => (current === clickedNodeId ? current : null));
             } else if (clickedNode?.type !== CanvasNodeType.Group) {
-                setDialogNodeId(clickedNodeId);
+                if (!showNodePanel(clickedNodeId)) return;
                 if (useConfigStore.getState().config.autoFocusOnSelect) {
                     // Wait for the generation panel to render so centering accounts for it.
                     requestAnimationFrame(() => focusNodeRef.current(clickedNodeId));
                 }
             }
         }
-    }, []);
+    }, [setDialogNodeId, showNodePanel]);
 
     const handleGlobalMouseMove = useCallback(
         (event: MouseEvent) => {
@@ -3267,9 +3242,7 @@ function InfiniteCanvasPage() {
                 inputSummary={getInputSummary(configInputsById.get(contentNode.id) || [])}
                 inputRoles={imageInputRolesByNodeId.get(contentNode.id) || []}
                 onConfigChange={handleConfigNodeChange}
-                onComposerToggle={() => {
-                    if (closedPanelByNodeClickRef.current !== contentNode.id) setDialogNodeId((current) => (current === contentNode.id ? null : contentNode.id));
-                }}
+                onComposerToggle={() => toggleNodePanel(contentNode.id)}
                 onStop={confirmStopGeneration}
                 onGenerate={(nodeId) => {
                     const target = nodesRef.current.find((item) => item.id === nodeId);
@@ -3277,7 +3250,7 @@ function InfiniteCanvasPage() {
                 }}
             />
         ),
-        [configInputsById, confirmStopGeneration, handleConfigNodeChange, handleGenerateNode, imageInputRolesByNodeId, runningNodeId],
+        [configInputsById, confirmStopGeneration, handleConfigNodeChange, handleGenerateNode, imageInputRolesByNodeId, runningNodeId, toggleNodePanel],
     );
 
     const hoverPreviewNode = hoverPreviewNodeId ? nodeById.get(hoverPreviewNodeId) || null : null;
@@ -3406,6 +3379,7 @@ function InfiniteCanvasPage() {
                             isConnectionTarget={connectionTargetNodeId === node.id}
                             isConnecting={Boolean(connectingParams)}
                             referenceSelectionState={!referencePickerNodeId ? undefined : node.id === referencePickerNodeId ? "target" : referenceConnectedNodeIds.has(node.id) || !isCanvasReferenceNode(node, nodes) ? "disabled" : "available"}
+                            panelController={nodePanel}
                             showPanel={!isNodeResizing && dialogNodeId === node.id && !selectionBox && !getNodeDefinition(node.type)?.hidePanel && !isKritaDockedNode(node) && getNodeDefinition(node.type)?.panelPlacement !== "right"}
                             groupChildCount={groupChildCountById.get(node.id) || 0}
                             isGroupDropTarget={dropTargetGroupId === node.id}
@@ -3498,9 +3472,7 @@ function InfiniteCanvasPage() {
                     onInfo={(node) => setInfoNodeId(node.id)}
                     onDecreaseFont={(node) => handleFontSizeChange(node.id, Math.max(10, (node.metadata?.fontSize || 14) - 2))}
                     onIncreaseFont={(node) => handleFontSizeChange(node.id, Math.min(32, (node.metadata?.fontSize || 14) + 2))}
-                    onToggleDialog={(node) => {
-                        if (closedPanelByNodeClickRef.current !== node.id) setDialogNodeId((current) => (current === node.id ? null : node.id));
-                    }}
+                    onToggleDialog={(node) => toggleNodePanel(node.id)}
                     onGenerateImage={generateImageFromTextNode}
                     onUpload={(node) => handleUploadRequest(node.id)}
                     onDownload={downloadNodeImage}
@@ -3643,7 +3615,7 @@ function InfiniteCanvasPage() {
 
                 <AssetPickerModal open={assetPickerOpen} onInsert={handleAssetInsert} onClose={() => setAssetPickerOpen(false)} />
             </section>
-            {dockedNode ? <aside key={dockedNode.id} data-node-panel={dockedNode.id} aria-label="节点控制面板" className="h-full w-80 min-w-0 shrink-0 border-l" style={{ background: theme.node.panel, borderColor: theme.node.stroke }}>{renderPluginPanel(dockedNode)}</aside> : null}
+            {dockedNode ? <CanvasPanel panel={nodePanel} role="complementary" key={dockedNode.id} data-node-panel={dockedNode.id} aria-label="节点控制面板" className="h-full w-80 min-w-0 shrink-0 border-l" style={{ background: theme.node.panel, borderColor: theme.node.stroke }}>{renderPluginPanel(dockedNode)}</CanvasPanel> : null}
         </main>
     );
 }

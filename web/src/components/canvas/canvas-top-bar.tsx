@@ -86,11 +86,19 @@ export function CanvasTopBar({
                             {sidePanelOpen ? <PanelLeftClose className="size-4" /> : <PanelLeftOpen className="size-4" />}
                         </button>
                     </Tooltip>
+                    <button
+                        type="button"
+                        onClick={onHome}
+                        className="flex h-7 shrink-0 items-center gap-1.5 rounded-full px-2 text-sm transition hover:bg-black/5 dark:hover:bg-white/10"
+                        style={{ color: theme.node.text }}
+                    >
+                        <Home className="size-4" aria-hidden="true" />
+                        <span>{t("canvas.home")}</span>
+                    </button>
                     <Dropdown
                         trigger={["click"]}
                         menu={{
                             items: [
-                                { key: "home", icon: <Home className="size-4" />, label: t("canvas.home"), onClick: onHome },
                                 { key: "docs", icon: <BookOpen className="size-4" />, label: t("canvas.docs"), onClick: () => window.open(DOCS_URL, "_blank", "noopener,noreferrer") },
                                 { key: "projects", icon: <Images className="size-4" />, label: t("canvas.projects"), onClick: onProjects },
                                 { type: "divider" },

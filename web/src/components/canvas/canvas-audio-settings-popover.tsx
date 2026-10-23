@@ -1,4 +1,4 @@
-import { useRef, useState, type RefObject } from "react";
+import { useRef, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { Settings2 } from "lucide-react";
 import { Button } from "antd";
@@ -8,7 +8,8 @@ import { audioFormatLabel, audioSpeedLabel, audioVoiceLabel } from "@/lib/audio-
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
 import type { AiConfig } from "@/stores/use-config-store";
-import { useCanvasPopoverAnchor, useCanvasPopoverOutsideClick } from "./use-canvas-popover-anchor";
+import { CanvasPanel, useCanvasPanel, type CanvasPanelController } from "./canvas-panel";
+import { useCanvasPopoverAnchor } from "./use-canvas-popover-anchor";
 
 export type CanvasAudioSettingKey = "audioVoice" | "audioFormat" | "audioSpeed" | "audioInstructions";
 
@@ -23,17 +24,16 @@ export function CanvasAudioSettingsPopover({ config, onConfigChange, buttonClass
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const buttonRef = useRef<HTMLSpanElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
-    const [open, setOpen] = useState(false);
+    const panelState = useCanvasPanel();
+    const open = panelState.isOpen;
     const buttonRect = useCanvasPopoverAnchor(buttonRef, open);
 
-    const wasClosedByTrigger = useCanvasPopoverOutsideClick(buttonRef, panelRef, open, () => setOpen(false));
-
-    const panel = open && buttonRect ? <AudioSettingsPortal buttonRect={buttonRect} panelRef={panelRef} placement={placement} theme={theme} config={config} onConfigChange={onConfigChange} /> : null;
+    const panel = open && buttonRect ? <AudioSettingsPortal buttonRect={buttonRect} panelRef={panelRef} panelState={panelState} placement={placement} theme={theme} config={config} onConfigChange={onConfigChange} /> : null;
 
     return (
         <>
             <span ref={buttonRef} className="inline-flex min-w-0">
-                <Button size="small" type="text" className={buttonClassName || "!h-8 !max-w-[170px] !justify-start !rounded-full !px-2.5"} style={{ background: theme.node.fill, color: theme.node.text }} icon={<Settings2 className="size-3.5" />} onClick={(event) => { if (!wasClosedByTrigger(event)) setOpen((current) => !current); }}>
+                <Button size="small" type="text" className={buttonClassName || "!h-8 !max-w-[170px] !justify-start !rounded-full !px-2.5"} style={{ background: theme.node.fill, color: theme.node.text }} icon={<Settings2 className="size-3.5" />} onClick={(event) => panelState.toggle("panel", event)}>
                     <span className="truncate">
                         {audioVoiceLabel(config.audioVoice)} · {audioFormatLabel(config.audioFormat)} · {audioSpeedLabel(config.audioSpeed)}
                     </span>
@@ -47,6 +47,7 @@ export function CanvasAudioSettingsPopover({ config, onConfigChange, buttonClass
 function AudioSettingsPortal({
     buttonRect,
     panelRef,
+    panelState,
     placement,
     theme,
     config,
@@ -54,6 +55,7 @@ function AudioSettingsPortal({
 }: {
     buttonRect: DOMRect;
     panelRef: RefObject<HTMLDivElement | null>;
+    panelState: CanvasPanelController;
     placement: CanvasAudioSettingsPopoverProps["placement"];
     theme: (typeof canvasThemes)[keyof typeof canvasThemes];
     config: AiConfig;
@@ -81,16 +83,14 @@ function AudioSettingsPortal({
     } as const;
 
     return createPortal(
-        <div
-            ref={panelRef}
+        <CanvasPanel
+            panel={panelState}
+            panelRef={panelRef}
             className="canvas-image-settings-popover"
             style={style}
-            onPointerDown={(event) => event.stopPropagation()}
-            onMouseDown={(event) => event.stopPropagation()}
-            onClick={(event) => event.stopPropagation()}
         >
             <AudioSettingsPanel config={config} onConfigChange={(key, value) => onConfigChange(key, value)} theme={theme} className="space-y-4" />
-        </div>,
+        </CanvasPanel>,
         document.body,
     );
 }

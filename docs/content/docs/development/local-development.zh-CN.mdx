@@ -38,3 +38,25 @@ bun run dev
 - 改画布、页面和交互：主要看 `web/`
 - 改提示词缓存：主要看 `web/src/services/api/prompts.ts`
 - 改文档站内容：主要看 `docs/content/docs/`
+
+
+## 画布公共面板
+
+`web/src/components/canvas/canvas-panel.tsx` 提供统一的面板状态与交互。使用 `useCanvasPanel()` 管理开关，内容包在 `CanvasPanel` 中；布局和业务回调留在调用方。
+
+```tsx
+const panel = useCanvasPanel();
+return <>
+    <button onClick={(event) => panel.toggle("panel", event)}>设置</button>
+    {panel.isOpen && <CanvasPanel panel={panel}>面板内容</CanvasPanel>}
+</>;
+```
+
+- 面板外任意鼠标按下立即关闭，包括中键、右键和拖动开始；内部内容正常操作。
+- 触发按钮使用 `toggle`，节点鼠标松开激活使用 `show(nodeId)`；两者自动拦截同一次指针操作导致的重新打开，下一次按下或键盘操作解除拦截。
+- `activeId` 支持一组节点面板；`setActiveId` 用于创建、粘贴、恢复等程序操作，不用于鼠标触发入口。
+- 嵌套 `CanvasPanel` 通过 React 上下文自动登记父子归属，`createPortal` 渲染到 body 也保持归属；无关面板属于外部。第三方下拉菜单的识别集中在基础组件中处理。
+- 关闭时保存连线说明等业务放在 `onDismiss`；`onOpenChange` 通知开关状态变化；`closeOnEscape` 按需保留 Escape 关闭。
+- `CanvasPanel` 统一隔离 pointerdown、mousedown 和 click 向画布的冒泡；定位、尺寸、滚动和内容渲染仍由各面板负责。
+
+已接入浮动／停靠节点面板、图片／文字／音频／视频设置、生成配置小面板和连线用途面板。验证范围见待测试记录；交互由公共代码实现，接入规范尚无仓库自动检查。

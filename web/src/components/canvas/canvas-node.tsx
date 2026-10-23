@@ -11,6 +11,7 @@ import { hasCanvasNodeHandle } from "@/lib/canvas/canvas-connection-state";
 import { KRITA_LINK } from "@/lib/canvas/krita-link";
 import { buildNodeContext } from "@/lib/canvas/plugin-node-context";
 import { useThemeStore } from "@/stores/use-theme-store";
+import { CanvasPanel, type CanvasPanelController } from "./canvas-panel";
 import { CanvasResourceMentionTextarea } from "./canvas-resource-mention-textarea";
 import { CanvasNodeType, type CanvasNodeData, type CanvasNodeImage, type CanvasNodeText, type Position } from "@/types/canvas";
 import type { CanvasNodeContext, CanvasPluginHost } from "@/types/canvas-plugin";
@@ -31,6 +32,7 @@ type CanvasNodeProps = {
     isConnecting: boolean;
     referenceSelectionState?: "target" | "disabled" | "available";
     showPanel: boolean;
+    panelController: CanvasPanelController;
     showImageInfo: boolean;
     mentionReferences?: CanvasResourceReference[];
     pluginHost?: CanvasPluginHost;
@@ -97,6 +99,7 @@ export const CanvasNode = React.memo(function CanvasNode({
     isConnecting,
     referenceSelectionState,
     showPanel,
+    panelController,
     showImageInfo,
     mentionReferences = [],
     pluginHost,
@@ -485,16 +488,16 @@ export const CanvasNode = React.memo(function CanvasNode({
             {!referenceSelectionState && hasCanvasNodeHandle(data, "source") ? <ConnectionHandleDot side="right" visible={hovered || isSelected || isConnecting} onMouseDown={(event) => onConnectStart(event, data.id, "source")} /> : null}
 
             {data.type === KRITA_LINK && showPanel && renderPanel ? (
-                <div className="absolute left-full top-0 z-[70] pl-3" style={{ transform: `scale(${1 / scale})`, transformOrigin: "top left" }} data-node-panel={data.id}>
+                <CanvasPanel panel={panelController} className="absolute left-full top-0 z-[70] pl-3" style={{ transform: `scale(${1 / scale})`, transformOrigin: "top left" }} data-node-panel={data.id}>
                     <div data-canvas-no-zoom className="w-80 max-w-[calc(100vw-24px)] overflow-hidden rounded-xl border" style={{ maxHeight: "calc(100vh - 24px)", background: theme.node.panel, borderColor: theme.node.stroke }}>
                         {renderPanel(data)}
                     </div>
-                </div>
+                </CanvasPanel>
             ) : showPanel && !isGroup && renderPanel ? (
                 /* Counter-scale the panel so its on-screen size stays constant while the canvas zooms. */
-                <div className="absolute left-1/2 top-full z-[70] w-[600px] pt-4" style={{ transform: `translateX(-50%) scale(${1 / scale})`, transformOrigin: "top center" }} data-node-panel={data.id}>
+                <CanvasPanel panel={panelController} className="absolute left-1/2 top-full z-[70] w-[600px] pt-4" style={{ transform: `translateX(-50%) scale(${1 / scale})`, transformOrigin: "top center" }} data-node-panel={data.id}>
                     {renderPanel(data)}
-                </div>
+                </CanvasPanel>
             ) : null}
         </div>
     );

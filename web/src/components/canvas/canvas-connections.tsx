@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 
+import { CanvasPanel, useCanvasPanel } from "./canvas-panel";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { CANVAS_INPUT_ROLES, canvasInputRoleLabel, isImageInputNode } from "@/lib/canvas/canvas-input-role";
 import { useThemeStore } from "@/stores/use-theme-store";
@@ -28,36 +29,14 @@ export function ConnectionRoleBadge({
     onChange: (patch: Pick<CanvasConnection, "role" | "instruction">) => void;
 }) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
-    const [open, setOpen] = useState(false);
     const [instruction, setInstruction] = useState(connection.instruction || "");
-    const rootRef = useRef<HTMLDivElement>(null);
-    const closedByTriggerRef = useRef(false);
-    const latestRef = useRef({ instruction, original: connection.instruction || "", onChange });
-    latestRef.current = { instruction, original: connection.instruction || "", onChange };
-    useEffect(() => {
-        const outside = (target: EventTarget | null) => !(target instanceof Node && rootRef.current?.querySelector('[role="dialog"]')?.contains(target));
-        const close = () => {
-            setOpen(false);
-            const { instruction: draft, original, onChange: save } = latestRef.current;
-            if (draft.trim() !== original) save({ instruction: draft.trim() });
-        };
-        const pointerDown = (event: PointerEvent) => {
-            closedByTriggerRef.current = false;
-            if (!open || !outside(event.target)) return;
-            closedByTriggerRef.current = event.target instanceof Node && !!rootRef.current?.contains(event.target);
-            close();
-        };
-        const keyDown = (event: KeyboardEvent) => {
-            if (!open || event.key !== "Escape") return;
-            close();
-        };
-        window.addEventListener("pointerdown", pointerDown, true);
-        window.addEventListener("keydown", keyDown, true);
-        return () => {
-            window.removeEventListener("pointerdown", pointerDown, true);
-            window.removeEventListener("keydown", keyDown, true);
-        };
-    }, [open]);
+    const panel = useCanvasPanel({
+        closeOnEscape: true,
+        onDismiss: () => {
+            if (instruction.trim() !== (connection.instruction || "")) onChange({ instruction: instruction.trim() });
+        },
+    });
+    const open = panel.isOpen;
     if (to.type !== CanvasNodeType.Config || !isImageInputNode(from)) return null;
 
     const startX = from.position.x + from.width;
@@ -73,9 +52,9 @@ export function ConnectionRoleBadge({
     const roleLabel = canvasInputRoleLabel(role);
 
     return (
-        <div ref={rootRef} className="absolute" style={{ left: x, top: y, zIndex: open || selected ? 60 : 11, transform: `translate(-50%, -50%) scale(${1 / zoom})`, transformOrigin: "center" }}>
+        <div className="absolute" style={{ left: x, top: y, zIndex: open || selected ? 60 : 11, transform: `translate(-50%, -50%) scale(${1 / zoom})`, transformOrigin: "center" }}>
             {open ? (
-                <div role="dialog" aria-label="图片用途" data-canvas-no-zoom className="absolute bottom-full left-1/2 mb-2 w-64 -translate-x-1/2 rounded-lg border p-3 shadow-lg" style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text }} onPointerDown={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()} onWheel={(event) => event.stopPropagation()}>
+                <CanvasPanel panel={panel} role="dialog" aria-label="图片用途" data-canvas-no-zoom className="absolute bottom-full left-1/2 mb-2 w-64 -translate-x-1/2 rounded-lg border p-3 shadow-lg" style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text }} onWheel={(event) => event.stopPropagation()}>
                     <div className="mb-2 border-b pb-2 text-sm font-medium" style={{ borderColor: theme.toolbar.border }}>图片用途</div>
                     <div className="w-56">
                         <div className="grid grid-cols-3 gap-1">
@@ -110,7 +89,7 @@ export function ConnectionRoleBadge({
                         />
                         <p className="mb-0 mt-2 text-xs" style={{ color: theme.node.muted }}>用途表达输入意图，具体支持取决于生成渠道；“蒙版描述”不执行像素级遮罩。</p>
                     </div>
-                </div>
+                </CanvasPanel>
             ) : null}
             <button
                 type="button"
@@ -124,11 +103,9 @@ export function ConnectionRoleBadge({
                 onMouseDown={(event) => event.stopPropagation()}
                 onClick={(event) => {
                     event.stopPropagation();
-                    if (event.detail > 0 && closedByTriggerRef.current) return;
+                    if (!panel.toggle("panel", event)) return;
                     onSelect();
                     if (!open) setInstruction(connection.instruction || "");
-                    else if (instruction.trim() !== (connection.instruction || "")) onChange({ instruction: instruction.trim() });
-                    setOpen(!open);
                 }}
                 onDoubleClick={(event) => event.stopPropagation()}
             >

@@ -1,4 +1,4 @@
-import { useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useRef, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Image as ImageIcon, LoaderCircle, MessageSquare, Music2, Play, Settings2, Square, Video } from "lucide-react";
 import { Button, InputNumber, Segmented } from "antd";
@@ -15,7 +15,8 @@ import { CanvasImageSettingsPopover } from "./canvas-image-settings-popover";
 import { CanvasAudioSettingsPopover, type CanvasAudioSettingKey } from "./canvas-audio-settings-popover";
 import { CanvasVideoSettingsPopover } from "./canvas-video-settings-popover";
 import { CanvasTextSettingsPopover } from "./canvas-text-settings-popover";
-import { useCanvasPopoverAnchor, useCanvasPopoverOutsideClick } from "./use-canvas-popover-anchor";
+import { CanvasPanel, useCanvasPanel } from "./canvas-panel";
+import { useCanvasPopoverAnchor } from "./use-canvas-popover-anchor";
 import type { CanvasGenerationMode, CanvasInputRole, CanvasNodeData, CanvasNodeMetadata } from "@/types/canvas";
 
 type CanvasConfigNodePanelProps = {
@@ -181,17 +182,17 @@ export function CanvasConfigNodePanel({ node, isRunning, inputSummary, inputRole
 type ComfyConfig = NonNullable<CanvasNodeMetadata["comfy"]>;
 
 function ConfigMiniPopover({ label, children, width, height, chipStyle, textColor, panelColor, strokeColor }: { label: ReactNode; children: ReactNode; width: number; height: number; chipStyle: CSSProperties; textColor: string; panelColor: string; strokeColor: string }) {
-    const [open, setOpen] = useState(false);
+    const panel = useCanvasPanel();
+    const open = panel.isOpen;
     const buttonRef = useRef<HTMLButtonElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
     const buttonRect = useCanvasPopoverAnchor(buttonRef, open);
-    const wasClosedByTrigger = useCanvasPopoverOutsideClick(buttonRef, panelRef, open, () => setOpen(false));
     const gap = 8;
     const left = buttonRect ? Math.max(gap, Math.min(buttonRect.right + gap + width <= window.innerWidth - gap ? buttonRect.right + gap : buttonRect.left - width - gap, window.innerWidth - width - gap)) : 0;
     const top = buttonRect ? Math.max(gap, Math.min(buttonRect.top, window.innerHeight - height - gap)) : 0;
     return <>
-        <button ref={buttonRef} type="button" className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-md border px-2 text-[11px]" style={chipStyle} aria-expanded={open} onPointerDown={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); if (!wasClosedByTrigger(event)) setOpen((current) => !current); }}>{label}</button>
-        {open && buttonRect ? createPortal(<div ref={panelRef} data-canvas-config-mini-popover className="rounded-lg border p-3 text-xs shadow-lg" style={{ position: "fixed", left, top, width, maxHeight: "calc(100vh - 16px)", overflowY: "auto", zIndex: 1200, color: textColor, background: panelColor, borderColor: strokeColor }} onPointerDown={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()} onWheel={(event) => event.stopPropagation()}>{children}</div>, document.body) : null}
+        <button ref={buttonRef} type="button" className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-md border px-2 text-[11px]" style={chipStyle} aria-expanded={open} onPointerDown={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); panel.toggle("panel", event); }}>{label}</button>
+        {open && buttonRect ? createPortal(<CanvasPanel panel={panel} panelRef={panelRef} data-canvas-config-mini-popover className="rounded-lg border p-3 text-xs shadow-lg" style={{ position: "fixed", left, top, width, maxHeight: "calc(100vh - 16px)", overflowY: "auto", zIndex: 1200, color: textColor, background: panelColor, borderColor: strokeColor }} onWheel={(event) => event.stopPropagation()}>{children}</CanvasPanel>, document.body) : null}
     </>;
 }
 

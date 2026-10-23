@@ -29,3 +29,25 @@ Common locations:
 - Canvas, pages, and interactions: `web/`
 - Prompt caching: `web/src/services/api/prompts.ts`
 - Documentation content: `docs/content/docs/`
+
+
+## Shared canvas panels
+
+`web/src/components/canvas/canvas-panel.tsx` owns panel interaction. Use `useCanvasPanel()` for state and wrap the content in `CanvasPanel`; keep layout and business callbacks in the caller.
+
+```tsx
+const panel = useCanvasPanel();
+return <>
+    <button onClick={(event) => panel.toggle("panel", event)}>Settings</button>
+    {panel.isOpen && <CanvasPanel panel={panel}>Panel content</CanvasPanel>}
+</>;
+```
+
+- Any outside pointer press dismisses immediately, including middle/right buttons and the beginning of dragging. Internal content remains interactive.
+- Use `toggle` for triggers and `show(nodeId)` for node mouse-up activation. Both suppress reopening the panel dismissed by the same pointer sequence. A new press or keyboard action clears suppression.
+- `activeId` supports a group of node panels; `setActiveId` is reserved for programmatic selection (creation, paste, restoration), not pointer triggers.
+- Nested `CanvasPanel` content automatically belongs to its ancestors, including when rendered with `createPortal`. Unrelated panels are outside. Third-party dropdown selectors are handled centrally in the base component.
+- Use `onDismiss` for business work on closing, such as saving an edge instruction. `onOpenChange` reports open/closed transitions; `closeOnEscape` retains opt-in Escape handling.
+- `CanvasPanel` isolates pointer-down, mouse-down and click bubbling from canvas interaction. Placement, sizing, scrolling and rendering remain with each panel.
+
+Implemented integration covers floating and docked node panels, image/text/audio/video settings, Config mini-panels and edge-role panels. See Pending Tests for verification limits; these rules are implemented in code, not enforced by an automated repository check.
