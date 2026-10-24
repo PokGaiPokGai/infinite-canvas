@@ -1,4 +1,5 @@
-import { afterAll, expect, test } from "bun:test";
+import assert from "node:assert/strict";
+import { after as afterAll, test } from "node:test";
 import type { CanvasConnection, CanvasNodeData, CanvasNodeImage } from "../src/types/canvas";
 import type { KritaSnapshot } from "../src/types/krita-link";
 
@@ -39,13 +40,13 @@ test("only one operational inbound image connection can deliver, and its key tra
     const second = image("second");
     const nodes = [write, first, second];
     const firstEdge = edge("edge-a", first);
-    expect(getKritaWriteDelivery(write, nodes, [firstEdge])).toMatchObject({ connectionId: "edge-a", sourceNode: first, storageKey: "image:first", key: "edge-a:image:first" });
-    expect(getKritaWriteDelivery(write, nodes, [firstEdge, edge("edge-b", second)])).toBeNull();
-    expect(getKritaWriteDelivery(write, nodes, [firstEdge, { ...edge("edge-b", second), enabled: false }])?.key).toBe("edge-a:image:first");
-    expect(getKritaWriteDelivery(write, nodes, [{ ...firstEdge, enabled: false }])).toBeNull();
-    expect(getKritaWriteDelivery(write, nodes, [edge("edge-c", first)])?.key).toBe("edge-c:image:first");
-    expect(getKritaWriteDelivery(write, [write, image("first", "image:new")], [firstEdge])?.key).toBe("edge-a:image:new");
-    expect(getKritaWriteDelivery(write, [write, node("first", CanvasNodeType.Image, { status: "loading", content: "/old", storageKey: "image:old" })], [firstEdge])).toBeNull();
+    assert.partialDeepStrictEqual(getKritaWriteDelivery(write, nodes, [firstEdge]), { connectionId: "edge-a", sourceNode: first, storageKey: "image:first", key: "edge-a:image:first" });
+    assert.strictEqual(getKritaWriteDelivery(write, nodes, [firstEdge, edge("edge-b", second)]), null);
+    assert.strictEqual(getKritaWriteDelivery(write, nodes, [firstEdge, { ...edge("edge-b", second), enabled: false }])?.key, "edge-a:image:first");
+    assert.strictEqual(getKritaWriteDelivery(write, nodes, [{ ...firstEdge, enabled: false }]), null);
+    assert.strictEqual(getKritaWriteDelivery(write, nodes, [edge("edge-c", first)])?.key, "edge-c:image:first");
+    assert.strictEqual(getKritaWriteDelivery(write, [write, image("first", "image:new")], [firstEdge])?.key, "edge-a:image:new");
+    assert.strictEqual(getKritaWriteDelivery(write, [write, node("first", CanvasNodeType.Image, { status: "loading", content: "/old", storageKey: "image:old" })], [firstEdge]), null);
 });
 
 test("Config delivers only a selected, successful output from its current completed batch", () => {
@@ -53,12 +54,12 @@ test("Config delivers only a selected, successful output from its current comple
     const current = generated("current");
     const config = node("config", CanvasNodeType.Config, { generationMode: "image", status: "success", outputImages: [current], selectedOutputImageId: current.id, content: current.content, storageKey: current.storageKey });
     const connection = edge("config-edge", config);
-    expect(getKritaWriteDelivery(write, [write, config], [connection])?.key).toBe("config-edge:image:current");
-    expect(getKritaWriteDelivery(write, [write, { ...config, metadata: { ...config.metadata, status: "loading" } }], [connection])).toBeNull();
-    expect(getKritaWriteDelivery(write, [write, { ...config, metadata: { ...config.metadata, selectedOutputImageId: old.id, content: old.content, storageKey: old.storageKey } }], [connection])).toBeNull();
-    expect(getKritaWriteDelivery(write, [write, { ...config, metadata: { ...config.metadata, outputImages: [generated("current", "loading")] } }], [connection])).toBeNull();
-    expect(getKritaWriteDelivery(write, [write, { ...config, metadata: { ...config.metadata, selectedOutputImageId: undefined } }], [connection])).toBeNull();
-    expect(getKritaWriteDelivery(write, [write, { ...config, metadata: { ...config.metadata, generationMode: "text" } }], [connection])).toBeNull();
+    assert.strictEqual(getKritaWriteDelivery(write, [write, config], [connection])?.key, "config-edge:image:current");
+    assert.strictEqual(getKritaWriteDelivery(write, [write, { ...config, metadata: { ...config.metadata, status: "loading" } }], [connection]), null);
+    assert.strictEqual(getKritaWriteDelivery(write, [write, { ...config, metadata: { ...config.metadata, selectedOutputImageId: old.id, content: old.content, storageKey: old.storageKey } }], [connection]), null);
+    assert.strictEqual(getKritaWriteDelivery(write, [write, { ...config, metadata: { ...config.metadata, outputImages: [generated("current", "loading")] } }], [connection]), null);
+    assert.strictEqual(getKritaWriteDelivery(write, [write, { ...config, metadata: { ...config.metadata, selectedOutputImageId: undefined } }], [connection]), null);
+    assert.strictEqual(getKritaWriteDelivery(write, [write, { ...config, metadata: { ...config.metadata, generationMode: "text" } }], [connection]), null);
 });
 
 test("Krita Read identifies Auto snapshots, while manual reads remain eligible for the caller to deliver", () => {
@@ -67,11 +68,11 @@ test("Krita Read identifies Auto snapshots, while manual reads remain eligible f
     const connection = edge("read-edge", manual);
     const manualDelivery = getKritaWriteDelivery(write, [write, manual], [connection]);
     const autoDelivery = getKritaWriteDelivery(write, [write, automatic], [connection]);
-    expect(manualDelivery?.key).toBe("read-edge:image:manual");
-    expect(manualDelivery && isAutoReadDelivery(manualDelivery)).toBe(false);
-    expect(autoDelivery?.key).toBe("read-edge:image:auto");
-    expect(autoDelivery && isAutoReadDelivery(autoDelivery)).toBe(true);
-    expect(getKritaWriteDelivery(write, [write, { ...manual, metadata: { ...manual.metadata, krita: { kind: "link", mode: "read" } } }], [connection])).toBeNull();
+    assert.strictEqual(manualDelivery?.key, "read-edge:image:manual");
+    assert.strictEqual(manualDelivery && isAutoReadDelivery(manualDelivery), false);
+    assert.strictEqual(autoDelivery?.key, "read-edge:image:auto");
+    assert.strictEqual(autoDelivery && isAutoReadDelivery(autoDelivery), true);
+    assert.strictEqual(getKritaWriteDelivery(write, [write, { ...manual, metadata: { ...manual.metadata, krita: { kind: "link", mode: "read" } } }], [connection]), null);
 });
 
 test("upstream Krita Write delivers only a completed write result", () => {
@@ -79,7 +80,7 @@ test("upstream Krita Write delivers only a completed write result", () => {
         kind: "link", mode: "write", commandId: "command", sourceImage: { nodeId: "original", storageKey: "image:returned", width: 32, height: 16 }, returnedLayerId: "layer", returnedAt: "2026-10-22",
     } });
     const connection = edge("prior-edge", result);
-    expect(getKritaWriteDelivery(write, [write, result], [connection])?.key).toBe("prior-edge:image:returned");
-    expect(getKritaWriteDelivery(write, [write, { ...result, metadata: { ...result.metadata, krita: { kind: "link", mode: "write", commandId: "pending" } } }], [connection])).toBeNull();
-    expect(getKritaWriteDelivery(write, [write, { ...result, metadata: { ...result.metadata, status: "error" } }], [connection])).toBeNull();
+    assert.strictEqual(getKritaWriteDelivery(write, [write, result], [connection])?.key, "prior-edge:image:returned");
+    assert.strictEqual(getKritaWriteDelivery(write, [write, { ...result, metadata: { ...result.metadata, krita: { kind: "link", mode: "write", commandId: "pending" } } }], [connection]), null);
+    assert.strictEqual(getKritaWriteDelivery(write, [write, { ...result, metadata: { ...result.metadata, status: "error" } }], [connection]), null);
 });

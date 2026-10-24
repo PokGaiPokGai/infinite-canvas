@@ -1,6 +1,7 @@
 import { resolveProductionInputs, REFERENCE_PACK, EXPORT_PRESET } from "@/lib/canvas/canvas-production";
 import { captureWorkflow, canMakeWorkflow, WORKFLOW_NODE } from "@/lib/canvas/workflow-graph";
 import { cancelProjectProcessing } from "@/lib/canvas/production-runner";
+import { unsupportedNodeTypes } from '@/lib/canvas/project-capabilities';
 import { useMaskAutoUpdate } from "./hooks/use-mask-auto-update";
 import { sameHistoryNodes } from "@/lib/canvas/canvas-history-inputs";
 import { MASK_TYPES } from "@/lib/canvas/image-mask";
@@ -199,6 +200,7 @@ function InfiniteCanvasPage() {
     const { t } = useTranslation();
     // Subscribe to the registry version so plugin registration changes rerender the canvas.
     const nodeRegistryVersion = useNodeRegistryVersion((state) => state.version);
+    const nodeRegistryReady = useNodeRegistryVersion((state) => state.ready);
     const params = useParams<{ id: string }>();
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
@@ -278,6 +280,7 @@ function InfiniteCanvasPage() {
     const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
     const [assetPickerOpen, setAssetPickerOpen] = useState(false);
     const [projectLoaded, setProjectLoaded] = useState(false);
+    const [unsupportedTypes, setUnsupportedTypes] = useState<string[]>([]);
     const [toolbarNodeId, setToolbarNodeId] = useState<string | null>(null);
     const [nodeImageSettingsOpen, setNodeImageSettingsOpen] = useState(false);
     const nodePanel = useCanvasPanel();
@@ -477,14 +480,17 @@ function InfiniteCanvasPage() {
     );
 
     useEffect(() => {
-        if (!hydrated) return;
+        if (!hydrated || !nodeRegistryReady) return;
         setProjectLoaded(false);
+        setUnsupportedTypes([]);
         const project = openProject(projectId);
         if (!project) {
             navigate("/canvas", { replace: true });
             return;
         }
 
+        const missing = unsupportedNodeTypes(project.nodes, type => isBuiltinType(type) || !!getNodeDefinition(type));
+        if (missing.length) { setUnsupportedTypes(missing); return; }
         const restore = async () => {
             const restoredNodes = await hydrateCanvasImages(resetInterruptedGeneration(project.nodes));
             const restoredSessions = await hydrateAssistantImages(project.chatSessions || []);
@@ -512,7 +518,7 @@ function InfiniteCanvasPage() {
             setProjectLoaded(true);
         };
         void restore();
-    }, [hydrated, navigate, openProject, projectId]);
+    }, [hydrated, nodeRegistryReady, navigate, openProject, projectId]);
 
     useEffect(() => {
         if (!projectLoaded) return;
@@ -3354,6 +3360,17 @@ function InfiniteCanvasPage() {
     const retainedPreview = retainedPreviewRef.current;
 
     const dockedNode = nodes.find((node) => node.id === dialogNodeId && (isKritaDockedNode(node) || getNodeDefinition(node.type)?.panelPlacement === "right"));
+    if (unsupportedTypes.length) return <main className="flex h-full flex-col items-center justify-center gap-4 p-8" style={{ background: theme.canvas.background, color: theme.node.text }}>
+        <strong>当前版本或插件尚不支持此画布的部分节点</strong>
+        <p className="max-w-xl text-sm">{unsupportedTypes.join('、')}。已停止载入和自动保存，原画布保持不变。请打开包含这些功能的分支，或启用对应插件后重新载入。</p>
+        <div className="flex gap-4 text-sm">
+            <button onClick={() => navigate('/canvas')}>返回画布列表</button>
+            <button onClick={() => { const project = useCanvasStore.getState().projects.find(item => item.id === projectId); if (project) void exportCanvasProjects([project], project.title).catch(error => message.error(error instanceof Error ? error.message : '导出失败')); }}>导出原画布</button>
+            <button onClick={() => setPluginManagerOpen(true)}>管理插件</button>
+            <button onClick={() => window.location.reload()}>重新载入</button>
+        </div>
+        <CanvasPluginManagerModal open={pluginManagerOpen} onClose={() => setPluginManagerOpen(false)} />
+    </main>;
     if (!projectLoaded) return <CanvasRefreshShell />;
 
     return (

@@ -51,7 +51,7 @@ export async function hydrateCanvasImages(nodes: CanvasNodeData[]) {
                 const data = node.metadata;
                 node = { ...node, metadata: { ...data,
                     processResults: await Promise.all((data.processResults || []).map(hydrateResult)),
-                    batchRows: await Promise.all((data.batchRows || []).map(async row => ({ ...row, input: await hydrateResult(row.input), references: await Promise.all(row.references.map(hydrateResult)), result: row.result ? await hydrateResult(row.result) : undefined, ...(row.state === "running" ? { state: "error" as const, error: "上次运行已中断，可仅重试此项。" } : {}) }))),
+                    batchRows: await Promise.all((data.batchRows || []).map(async row => ({ ...row, input: await hydrateResult(row.input), references: await Promise.all(row.references.map(hydrateResult)), result: row.result ? await hydrateResult(row.result) : undefined }))),
                     ...(data.workflow ? { workflow: { ...data.workflow, nodes: await hydrateCanvasImages(data.workflow.nodes) } } : {}),
                 } };
             }
@@ -153,7 +153,7 @@ export function hasResumableVideoTask(node: CanvasNodeData) {
 
 export function resetInterruptedGeneration(nodes: CanvasNodeData[]) {
     return nodes.map((node) =>
-        node.metadata?.status === "loading"
+        node.metadata?.status === "loading" && !["process:batch", "process:workflow"].includes(node.type)
             ? hasResumableVideoTask(node)
                 ? node
                 : {

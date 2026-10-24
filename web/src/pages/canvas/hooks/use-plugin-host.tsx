@@ -1,5 +1,6 @@
 import { registerProductionNodes } from "@/components/canvas/production-nodes";
 import { registerProcessingNodes } from "@/components/canvas/processing-nodes";
+import { markNodeRegistryReady } from '@/lib/canvas/node-registry';
 import { buildNodeGenerationContext, buildNodeResponseMessages, hydrateNodeGenerationContext, supportsLocalComfyControls } from "@/components/canvas/canvas-node-generation";
 import { nanoid } from "nanoid";
 import { registerVersionStackNode } from "@/components/canvas/version-stack-node";
@@ -192,7 +193,7 @@ export function usePluginHost(params: PluginHostParams) {
         registerVersionStackNode();
         registerProductionNodes();
         registerProcessingNodes();
-        void ensurePluginsLoaded();
+        void ensurePluginsLoaded().catch(error => console.error('节点插件载入失败：', error)).finally(markNodeRegistryReady);
     }, []);
 
     return { pluginHost, renderPluginPanel, buildNodeToolbarItems };

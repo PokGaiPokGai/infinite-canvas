@@ -1,4 +1,5 @@
-import { afterAll, expect, test } from "bun:test";
+import assert from "node:assert/strict";
+import { after as afterAll, test } from "node:test";
 import type { CanvasConnection, CanvasNodeData } from "../src/types/canvas";
 
 const originalStorage = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
@@ -18,48 +19,48 @@ afterAll(() => {
 
 test("empty Blender ports can be wired ahead of time and only image inputs are accepted", () => {
     const nodes = [node("read", BLENDER_LINK, { blender: { mode: "read" } }), node("write", BLENDER_LINK, { blender: { mode: "write" } }), node("config", CanvasNodeType.Config), node("image", CanvasNodeType.Image), node("text", CanvasNodeType.Text)];
-    expect(normalizeConnection("read", "config", nodes, "source")).toEqual({ fromNodeId: "read", toNodeId: "config" });
-    expect(normalizeConnection("config", "write", nodes, "source")).toEqual({ fromNodeId: "config", toNodeId: "write" });
-    expect(normalizeConnection("image", "write", nodes, "source")).not.toBeNull();
-    expect(normalizeConnection("read", "write", nodes, "source")).not.toBeNull();
-    expect(normalizeConnection("image", "read", nodes, "source")).toBeNull();
-    expect(normalizeConnection("text", "write", nodes, "source")).toBeNull();
-    expect(wouldCreateConnectionCycle("write", "read", [{ id: "edge", fromNodeId: "read", toNodeId: "write" }])).toBe(true);
+    assert.deepStrictEqual(normalizeConnection("read", "config", nodes, "source"), { fromNodeId: "read", toNodeId: "config" });
+    assert.deepStrictEqual(normalizeConnection("config", "write", nodes, "source"), { fromNodeId: "config", toNodeId: "write" });
+    assert.notStrictEqual(normalizeConnection("image", "write", nodes, "source"), null);
+    assert.notStrictEqual(normalizeConnection("read", "write", nodes, "source"), null);
+    assert.strictEqual(normalizeConnection("image", "read", nodes, "source"), null);
+    assert.strictEqual(normalizeConnection("text", "write", nodes, "source"), null);
+    assert.strictEqual(wouldCreateConnectionCycle("write", "read", [{ id: "edge", fromNodeId: "read", toNodeId: "write" }]), true);
 });
 
 test("switching modes makes existing image connections dormant and restores them", () => {
     const config = node("config", CanvasNodeType.Config);
     const write = node("write", BLENDER_LINK, { blender: { mode: "write" } });
     const connection: CanvasConnection = { id: "edge", fromNodeId: "config", toNodeId: "write" };
-    expect(isConnectionOperational(connection, config, write)).toBe(true);
+    assert.strictEqual(isConnectionOperational(connection, config, write), true);
     write.metadata!.blender!.mode = "read";
-    expect(isConnectionOperational(connection, config, write)).toBe(false);
+    assert.strictEqual(isConnectionOperational(connection, config, write), false);
     write.metadata!.blender!.mode = "write";
     config.metadata!.generationMode = "text";
-    expect(isConnectionOperational(connection, config, write)).toBe(false);
+    assert.strictEqual(isConnectionOperational(connection, config, write), false);
     config.metadata!.generationMode = "image";
-    expect(isConnectionOperational(connection, config, write)).toBe(true);
+    assert.strictEqual(isConnectionOperational(connection, config, write), true);
 });
 
 test("write freezes only one finished selected image, excluding stale or loading config output", () => {
     const write = node("write", BLENDER_LINK, { blender: { mode: "write" } });
     const config = node("config", CanvasNodeType.Config, { status: "success", content: "image-url", storageKey: "original", selectedOutputImageId: "result", outputImages: [{ id: "result", content: "image-url", storageKey: "original", status: "success" }] });
     const connections: CanvasConnection[] = [{ id: "edge", fromNodeId: "config", toNodeId: "write" }];
-    expect(blenderWriteInput(write, [config, write], connections)?.storageKey).toBe("original");
+    assert.strictEqual(blenderWriteInput(write, [config, write], connections)?.storageKey, "original");
     config.metadata!.status = "loading";
-    expect(blenderWriteInput(write, [config, write], connections)).toBeNull();
+    assert.strictEqual(blenderWriteInput(write, [config, write], connections), null);
     config.metadata!.status = "success";
     config.metadata!.selectedOutputImageId = "not-selected";
-    expect(blenderWriteInput(write, [config, write], connections)).toBeNull();
+    assert.strictEqual(blenderWriteInput(write, [config, write], connections), null);
     config.metadata!.selectedOutputImageId = "result";
-    expect(blenderWriteInput(write, [config, write], [...connections, { ...connections[0], id: "second" }])).toBeNull();
+    assert.strictEqual(blenderWriteInput(write, [config, write], [...connections, { ...connections[0], id: "second" }]), null);
 });
 
 test("a pending write cannot release an image downstream", () => {
     const write = node("write", BLENDER_LINK, { content: "frozen-image", storageKey: "frozen", blender: { mode: "write" } });
-    expect(hasBlenderWriteOutput(write)).toBe(false);
+    assert.strictEqual(hasBlenderWriteOutput(write), false);
     write.metadata!.blender!.receipt = { commandId: "command", sessionId: "session", port: 9876, destination: { kind: "new", name: "Result" }, imageId: "image", imageName: "Result", sha256: "digest", returnedAt: "date" };
-    expect(hasBlenderWriteOutput(write)).toBe(true);
+    assert.strictEqual(hasBlenderWriteOutput(write), true);
     write.metadata!.blender!.pending = { commandId: "next", sessionId: "session", port: 9876, destination: { kind: "image", imageId: "image", expectedRevision: "revision" }, colorSpace: "sRGB", storageKey: "frozen", inputKey: "edge:frozen" };
-    expect(hasBlenderWriteOutput(write)).toBe(false);
+    assert.strictEqual(hasBlenderWriteOutput(write), false);
 });

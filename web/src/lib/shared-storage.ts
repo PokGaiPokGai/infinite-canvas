@@ -22,6 +22,7 @@ let activeWrites = 0;
 
 export const isSharedStorageEnabled = () => enabled;
 export const getSharedStorageStatus = () => status;
+export const getSharedStorageRevision = () => globalRevision;
 export function subscribeSharedStorage(listener: () => void) {
     listeners.add(listener);
     return () => { listeners.delete(listener); };
@@ -277,7 +278,7 @@ async function migrateBrowserData() {
 
 export async function initializeSharedStorage() {
     if (!enabled) return;
-    clientId = sessionStorage.getItem("infinite-canvas:shared-client") || crypto.randomUUID();
+    clientId = crypto.randomUUID(); // Duplicating a tab can copy sessionStorage; each live page needs its own identity.
     sessionStorage.setItem("infinite-canvas:shared-client", clientId);
     const meta = await (await checkedFetch(`${endpoint}/meta`)).json();
     if (meta.schemaVersion !== 1) throw new Error("本机数据库版本与应用不一致，已停止载入以保护原数据。");

@@ -1,3 +1,4 @@
+import { createExecutionOwnership } from './execution-ownership.mjs';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
@@ -292,6 +293,7 @@ export function createSharedStorage({ dataDirectory = resolve(dirname(fileURLToP
     const subscribers = new Set();
     let closed = false;
     const revision = () => database.prepare("SELECT value FROM storage_meta WHERE key = 'revision'").get().value;
+    const execution = createExecutionOwnership(revision);
     const rowAt = (namespace, key) => database.prepare('SELECT * FROM storage_items WHERE namespace = ? AND key = ?').get(namespace, key);
 
     function transaction(action) {
@@ -459,7 +461,9 @@ export function createSharedStorage({ dataDirectory = resolve(dirname(fileURLToP
             } else if (request.headers['x-infinite-canvas-storage'] !== '1') throw new StorageError(403, '请从本机画布访问共享数据。');
             if (request.method !== 'GET' && origin !== canvasOrigin) throw new StorageError(403, '共享数据只能由本机画布修改。');
 
-            if (request.method === 'GET' && path === '/storage/meta') {
+            if (path === '/storage/execution') {
+                execution.handle(request, response);
+            } else if (request.method === 'GET' && path === '/storage/meta') {
                 respond(response, 200, { schemaVersion: 1, revision: revision(), migrationCount: database.prepare("SELECT count(*) AS count FROM storage_imports WHERE status = 'committed'").get().count });
             } else if (request.method === 'GET' && path === '/storage/items') {
                 const namespace = namespaceOf(url.searchParams.get('namespace'));
@@ -551,9 +555,10 @@ export function createSharedStorage({ dataDirectory = resolve(dirname(fileURLToP
     function close() {
         if (closed) return;
         closed = true;
+        execution.close();
         for (const response of subscribers) response.end();
         subscribers.clear();
         database.close();
     }
-    return { handle, close };
+    return { handle, close, get activeExecutions() { return execution.active; } };
 }

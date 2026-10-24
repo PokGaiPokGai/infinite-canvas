@@ -7,10 +7,13 @@
         "dev": "vite --host 0.0.0.0 --port 3000",
         "build": "vite build",
         "typecheck": "tsc --noEmit",
-        "test": "bun test",
+        "test": "node --import ../local/test-register.mjs --test tests/*.test.ts",
         "start": "vite preview --host 0.0.0.0 --port 3000",
         "format": "prettier --write .",
-        "format:check": "prettier --check ."
+        "format:check": "prettier --check .",
+        "build:local": "vite build --config ../local/vite.config.ts",
+        "test:local": "node --test ../local/*.test.mjs",
+        "check": "node ../local/run-checks.mjs"
     },
     "dependencies": {
         "@ant-design/icons": "^6.1.1",
@@ -55,5 +58,6 @@
         "prettier": "^3.8.3",
         "typescript": "^5",
         "vite": "^7.3.0"
-    }
+    },
+    "packageManager": "pnpm@11.22.0"
 }

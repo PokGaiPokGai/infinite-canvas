@@ -2,15 +2,9 @@
 
 本机画布复用已安装的 **BlenderMCP**。不新增 Blender 插件，不注册常驻的定时检查；BlenderMCP 负责将请求放到 Blender 主线程执行。
 
-## 打开本分支预览
+## 打开开发预览
 
-双击 worktree 根目录的 `启动Blender分支预览.cmd`，或在 worktree 运行 `powershell -NoProfile -ExecutionPolicy Bypass -File local/Start-BlenderPreview.ps1`，然后打开 `http://127.0.0.1:3034/canvas`。
-
-当前 `codex/blender-canvas-v2` 从已合并 Blender 第一版的本地 `main` 创建。该入口使用本 worktree 的 Vite 前端和 Blender 桥接代码，不需要先构建；锁文件一致时复用主目录已安装的依赖，不安装新包。前端使用 3034，独立 Blender 接口使用 3036，快照与回执保存在本 worktree 的 `.local/blender-link/`。端口已被其他程序占用时直接报错，不停止其他进程。
-
-画布、原图、渠道配置与生成历史通过原本机 3002 服务读取同一份共享数据库，Krita 与 Codex 桥接也沿用该服务，ComfyUI 仍使用已有的 8188。两边保存影响同一份本机数据，既有冲突保护继续生效。共享服务未运行时调用主检出启动器；本分支不创建空白数据库，不复制渠道配置或登录文件。
-
-原第一版的 3030／3032 预览继续保留其独立测试数据库；当前入口不会导入或修改那份测试数据。日志和进程归属记录位于本 worktree 的 `.local/blender-preview/`。重复启动检查目录归属并复用当前服务；启动时核验共享存储和 Krita 状态，Krita 未连接时仍可进入画布。
+使用[统一开发入口](README.md)：在 worktree 执行 `node local/runtime.mjs init --port 3034`，再双击该检出 `.local/启动开发版.cmd`。前端使用当前检出，Blender、Krita、Codex 与共享数据由主检出的 3002 后台统一提供。临时调试独立桥接时必须明确使用隔离测试数据，不再将独立桥接入口合入主分支。
 
 ## 手动工作流
 

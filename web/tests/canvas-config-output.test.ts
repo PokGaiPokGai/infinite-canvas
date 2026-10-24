@@ -1,4 +1,5 @@
-import { afterAll, expect, test } from "bun:test";
+import assert from "node:assert/strict";
+import { after as afterAll, test } from "node:test";
 import type { CanvasConnection, CanvasNodeData } from "../src/types/canvas";
 
 const originalStorage = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
@@ -23,11 +24,11 @@ const target = node("target", { generationMode: "text", prompt: "目标提示词
 test("Config output stays available in every mode and Config-to-Config direction follows the dragged handle", () => {
     for (const generationMode of ["image", "text", "video", "audio"] as const) {
         const source = node("source", { generationMode });
-        expect(hasCanvasNodeHandle(source, "source")).toBe(true);
-        expect(normalizeConnection(source.id, target.id, [source, target], "source")).toEqual({ fromNodeId: source.id, toNodeId: target.id });
-        expect(normalizeConnection(source.id, target.id, [source, target], "target")).toEqual({ fromNodeId: target.id, toNodeId: source.id });
+        assert.strictEqual(hasCanvasNodeHandle(source, "source"), true);
+        assert.deepStrictEqual(normalizeConnection(source.id, target.id, [source, target], "source"), { fromNodeId: source.id, toNodeId: target.id });
+        assert.deepStrictEqual(normalizeConnection(source.id, target.id, [source, target], "target"), { fromNodeId: target.id, toNodeId: source.id });
     }
-    expect(wouldCreateConnectionCycle(target.id, "source", [edge])).toBe(true);
+    assert.strictEqual(wouldCreateConnectionCycle(target.id, "source", [edge]), true);
 });
 
 test("Config only exposes the selected output for its current mode, never its prompt or an unselected text batch", () => {
@@ -36,22 +37,22 @@ test("Config only exposes the selected output for its current mode, never its pr
         outputTexts: [{ id: "first", status: "success", content: "第一段" }, { id: "second", status: "success", content: "第二段" }],
         outputVideo: { content: "blob:old-video" },
     });
-    expect(getCanvasConfigOutput(source)).toBeNull();
-    expect(buildNodeGenerationInputs(target.id, [source, target], [edge])).toEqual([]);
-    expect(buildNodeGenerationContext(target.id, [source, target], [edge], "继续生成").prompt).toBe("继续生成");
+    assert.strictEqual(getCanvasConfigOutput(source), null);
+    assert.deepStrictEqual(buildNodeGenerationInputs(target.id, [source, target], [edge]), []);
+    assert.strictEqual(buildNodeGenerationContext(target.id, [source, target], [edge], "继续生成").prompt, "继续生成");
 
     const selected = { ...source, metadata: { ...source.metadata, selectedOutputTextId: "second", outputText: "第二段" } };
-    expect(getCanvasConfigOutput(selected)).toEqual({ kind: "text", content: "第二段" });
-    expect(buildNodeGenerationInputs(target.id, [selected, target], [edge])).toMatchObject([{ nodeId: "source", type: "text", text: "第二段" }]);
-    expect(buildNodeGenerationContext(target.id, [selected, target], [edge], "继续生成").prompt).toContain("第二段");
-    expect(buildNodeGenerationContext(target.id, [selected, target], [edge], "继续生成").prompt).not.toContain("不要作为生成结果传下去");
+    assert.deepStrictEqual(getCanvasConfigOutput(selected), { kind: "text", content: "第二段" });
+    assert.partialDeepStrictEqual(buildNodeGenerationInputs(target.id, [selected, target], [edge]), [{ nodeId: "source", type: "text", text: "第二段" }]);
+    assert.ok((buildNodeGenerationContext(target.id, [selected, target], [edge], "继续生成").prompt).includes("第二段"));
+    assert.ok(!(buildNodeGenerationContext(target.id, [selected, target], [edge], "继续生成").prompt).includes("不要作为生成结果传下去"));
     const composed = node("target", { generationMode: "text", composerContent: "续写 @[node:source]" });
-    expect(buildNodeGenerationContext(composed.id, [selected, composed], [edge], "续写 @[node:source]").prompt).toContain("第二段");
+    assert.ok((buildNodeGenerationContext(composed.id, [selected, composed], [edge], "续写 @[node:source]").prompt).includes("第二段"));
 
     const video = { ...selected, metadata: { ...selected.metadata, generationMode: "video" as const } };
-    expect(getCanvasConfigOutput(video)).toEqual({ kind: "video", content: "blob:old-video" });
+    assert.deepStrictEqual(getCanvasConfigOutput(video), { kind: "video", content: "blob:old-video" });
     const videoTarget = node("target", { generationMode: "video" });
-    expect(buildNodeGenerationInputs(videoTarget.id, [video, videoTarget], [edge])[0]?.type).toBe("video");
+    assert.strictEqual(buildNodeGenerationInputs(videoTarget.id, [video, videoTarget], [edge])[0]?.type, "video");
 });
 
 test("Config image, video and audio outputs become typed downstream references", () => {
@@ -63,21 +64,21 @@ test("Config image, video and audio outputs become typed downstream references",
     for (const item of cases) {
         const source = node("source", { generationMode: item.mode, ...item.metadata });
         const downstream = node("target", { generationMode: item.targetMode });
-        expect(isConnectionOperational(edge, source, downstream)).toBe(true);
+        assert.strictEqual(isConnectionOperational(edge, source, downstream), true);
         const inputs = buildNodeGenerationInputs(downstream.id, [source, downstream], [edge]);
-        expect(inputs).toHaveLength(1);
-        expect(inputs[0]?.type).toBe(item.input);
+        assert.strictEqual((inputs).length, 1);
+        assert.strictEqual(inputs[0]?.type, item.input);
         const context = buildNodeGenerationContext(downstream.id, [source, downstream], [edge], "继续生成");
-        expect(context[item.collection]).toHaveLength(1);
-        expect(context[item.collection][0]?.storageKey).toBe(item.storageKey);
+        assert.strictEqual((context[item.collection]).length, 1);
+        assert.strictEqual(context[item.collection][0]?.storageKey, item.storageKey);
     }
 });
 
 test("unsupported Config media paths become dormant and recover when the target mode changes", () => {
     const source = node("source", { generationMode: "video", outputVideo: { content: "blob:video" } });
-    expect(isConnectionOperational(edge, source, target)).toBe(false);
-    expect(buildNodeGenerationInputs(target.id, [source, target], [edge])).toEqual([]);
+    assert.strictEqual(isConnectionOperational(edge, source, target), false);
+    assert.deepStrictEqual(buildNodeGenerationInputs(target.id, [source, target], [edge]), []);
     const videoTarget = node("target", { generationMode: "video" });
-    expect(isConnectionOperational(edge, source, videoTarget)).toBe(true);
-    expect(buildNodeGenerationInputs(videoTarget.id, [source, videoTarget], [edge])[0]?.type).toBe("video");
+    assert.strictEqual(isConnectionOperational(edge, source, videoTarget), true);
+    assert.strictEqual(buildNodeGenerationInputs(videoTarget.id, [source, videoTarget], [edge])[0]?.type, "video");
 });
