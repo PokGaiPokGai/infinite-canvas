@@ -5,6 +5,7 @@ import { unsupportedNodeTypes } from '@/lib/canvas/project-capabilities';
 import { useMaskAutoUpdate } from "./hooks/use-mask-auto-update";
 import { sameHistoryNodes } from "@/lib/canvas/canvas-history-inputs";
 import { MASK_TYPES } from "@/lib/canvas/image-mask";
+import { remapPaintMaskSources } from "@/lib/canvas/paint-mask";
 import { VERSION_STACK, STACK_RELEASE, canStackNodes, stackDisplayNodes, stackedNodeIds, stackMembers, resolveVersionStacks, releaseVersionStack } from "@/lib/canvas/version-stack";
 import { onCanvasEvent } from "@/lib/canvas/canvas-event-bus";
 import { IMAGE_COMPARE, resolveComparisonNodes } from "@/lib/canvas/image-compare";
@@ -1214,7 +1215,7 @@ function InfiniteCanvasPage() {
         const pastedNodes = nextNodes.map((node) => {
             const groupId = node.metadata?.groupId;
             const stack = node.metadata?.versionStack;
-            return { ...node, metadata: { ...node.metadata, groupId: groupId ? idMap.get(groupId) : undefined, ...(node.metadata?.workflow ? { workflow: { ...structuredClone(node.metadata.workflow), expandedGroupId: undefined, bindings: Object.fromEntries(Object.entries(node.metadata.workflow.bindings).map(([key, id]) => [key, idMap.get(id) || id])) } } : {}), ...(stack ? { versionStack: { memberIds: stack.memberIds.map(id => idMap.get(id)!).filter(Boolean), selectedId: stack.selectedId ? idMap.get(stack.selectedId) : undefined } } : {}) } };
+            return { ...node, metadata: { ...node.metadata, ...remapPaintMaskSources(node.metadata || {}, idMap), groupId: groupId ? idMap.get(groupId) : undefined, ...(node.metadata?.workflow ? { workflow: { ...structuredClone(node.metadata.workflow), expandedGroupId: undefined, bindings: Object.fromEntries(Object.entries(node.metadata.workflow.bindings).map(([key, id]) => [key, idMap.get(id) || id])) } } : {}), ...(stack ? { versionStack: { memberIds: stack.memberIds.map(id => idMap.get(id)!).filter(Boolean), selectedId: stack.selectedId ? idMap.get(stack.selectedId) : undefined } } : {}) } };
         });
 
         const nextConnections = clipboard.connections.flatMap((connection, index) => {

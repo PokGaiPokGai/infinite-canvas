@@ -44,9 +44,9 @@ export function verifyDependencies(root) {
     return target;
 }
 export function readInstance(root) {
+    if (checkout(root).branch === 'main') return { port: 3000 };
     const file = join(root, '.local/instance.json');
     if (!existsSync(file)) {
-        if (checkout(root).branch === 'main') return { port: 3070 };
         throw new Error('此 worktree 尚未配置入口：node local/runtime.mjs init --port <空闲端口>');
     }
     const config = JSON.parse(readFileSync(file, 'utf8'));

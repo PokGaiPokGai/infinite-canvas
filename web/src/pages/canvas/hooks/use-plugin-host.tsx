@@ -1,5 +1,6 @@
 import { registerProductionNodes } from "@/components/canvas/production-nodes";
 import { registerProcessingNodes } from "@/components/canvas/processing-nodes";
+import { registerPaintMaskNode } from "@/components/canvas/paint-mask-node";
 import { markNodeRegistryReady } from '@/lib/canvas/node-registry';
 import { buildNodeGenerationContext, buildNodeResponseMessages, hydrateNodeGenerationContext, supportsLocalComfyControls } from "@/components/canvas/canvas-node-generation";
 import { nanoid } from "nanoid";
@@ -193,6 +194,7 @@ export function usePluginHost(params: PluginHostParams) {
         registerVersionStackNode();
         registerProductionNodes();
         registerProcessingNodes();
+        registerPaintMaskNode();
         void ensurePluginsLoaded().catch(error => console.error('节点插件载入失败：', error)).finally(markNodeRegistryReady);
     }, []);
 

@@ -50,6 +50,7 @@ export async function hydrateCanvasImages(nodes: CanvasNodeData[]) {
                 const hydrateResult = async <T extends { kind: string; content: string; storageKey?: string }>(result: T) => result.kind === "image" ? { ...result, content: await resolveImageUrl(result.storageKey, result.content) } : result;
                 const data = node.metadata;
                 node = { ...node, metadata: { ...data,
+                    ...(data.paintMask?.output?.storageKey ? { paintMask: { ...data.paintMask, output: { ...data.paintMask.output, content: await resolveImageUrl(data.paintMask.output.storageKey, data.paintMask.output.content) } } } : {}),
                     processResults: await Promise.all((data.processResults || []).map(hydrateResult)),
                     batchRows: await Promise.all((data.batchRows || []).map(async row => ({ ...row, input: await hydrateResult(row.input), references: await Promise.all(row.references.map(hydrateResult)), result: row.result ? await hydrateResult(row.result) : undefined }))),
                     ...(data.workflow ? { workflow: { ...data.workflow, nodes: await hydrateCanvasImages(data.workflow.nodes) } } : {}),

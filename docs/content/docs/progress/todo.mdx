@@ -5,7 +5,9 @@ description: Planned follow-up work
 
 # TODO
 
-- 规范整改合入并验收后，核对旧 worktree 与入口是否仍使用；先保留忽略文件及导出旧验收画布，再按授权退役和归档。画布大页面后续按具体功能继续拆分，避免一次性重写。
+- Inpainting provider integration: hand-painted masks now produce real grayscale images. Wire original-image/mask parameters for explicitly supported providers and verify mask polarity and preservation outside the mask; Mask Description edges are not a completed integration.
+
+- main 已统一使用 3000 构建版；后续核对其他旧 worktree 与入口是否仍使用，先保留忽略文件及导出旧验收画布，再按授权退役和归档。画布大页面后续按具体功能继续拆分，避免一次性重写。
 
 - Replace the Claude Code CLI adapter with a Claude Agent SDK adapter and improve the tool queue, following the [Local Agent Integration Plan](/docs/progress/local-agent-integration-plan).
 - Add Skill installation from web search, Skill resource-file management, and controlled local-memory persistence.

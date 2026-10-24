@@ -4,8 +4,22 @@ import { EventEmitter } from 'node:events';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { checkout, runtimeEndpoint, verifyBuild, sourceFingerprint, buildDirectory, verifyDependencies } from './runtime-core.mjs';
+import { checkout, runtimeEndpoint, verifyBuild, sourceFingerprint, buildDirectory, verifyDependencies, readInstance } from './runtime-core.mjs';
 import { withTestDirectory } from './test-fixture.mjs';
+
+test('main stays on 3000 despite old instance configuration; feature checkouts keep their own port', () => withTestDirectory(async root => {
+    const git = (...args) => execFileSync('git', ['-C', root, ...args], { windowsHide: true, stdio: 'ignore' });
+    git('init', '--initial-branch=main');
+    git('-c', 'user.name=Runtime Test', '-c', 'user.email=runtime@example.invalid', '-c', 'commit.gpgsign=false', 'commit', '--allow-empty', '-m', 'fixture');
+    assert.equal(readInstance(root).port, 3000);
+    await mkdir(join(root, '.local'));
+    await writeFile(join(root, '.local/instance.json'), '{"port":3070}');
+    assert.equal(readInstance(root).port, 3000);
+    git('checkout', '-b', 'codex/runtime-test');
+    assert.equal(readInstance(root).port, 3070);
+    await writeFile(join(root, '.local/instance.json'), '{"port":3000}');
+    assert.throws(() => readInstance(root), /不能占用 3000/);
+}));
 
 test('build mode and source fingerprint detect the wrong build and uncommitted source changes', () => withTestDirectory(async root => {
     execFileSync('git', ['init', '--initial-branch=codex/runtime-test', root], { windowsHide: true, stdio: 'ignore' });

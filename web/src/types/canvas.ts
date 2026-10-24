@@ -2,6 +2,7 @@ import type { ReferencePack, ExportPreset, ProductionImage } from "./canvas-prod
 import type { MaskSettings, BatchSettings, BatchRow, WorkflowSettings, ProcessResult } from "./canvas-workflow";
 import type { KritaNodeMetadata } from "@/types/krita-link";
 import type { BlenderLinkMetadata } from "@/types/blender-link";
+import type { PaintMaskDrawing } from "./paint-mask";
 
 export type Position = {
     x: number;
@@ -60,6 +61,8 @@ export type CanvasMediaOutput = {
 };
 
 export type CanvasNodeMetadata = {
+    paintMask?: PaintMaskDrawing;
+    paintMaskSourceId?: string;
     maskSettings?: MaskSettings;
     processOutputKey?: string;
     processInputKey?: string;

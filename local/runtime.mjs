@@ -71,7 +71,9 @@ async function bridge() {
     return startOwned({ source: main, port: 3002, mode: 'bridge', script: join(main, 'local/codex-image-bridge.mjs') });
 }
 async function frontend(production) {
-    if (production && normalized(root) !== normalized(main)) throw new Error('正式本机入口只从主检出运行，请在主目录执行。worktree 使用 start。');
+    const mainFrontend = normalized(root) === normalized(main) && checkout(root).branch === 'main';
+    if (production && !mainFrontend) throw new Error('正式本机入口只从 main 主检出运行，请在主目录执行。worktree 使用 start。');
+    production ||= mainFrontend;
     verifyDependencies(root);
     const build = production ? verifyBuild(root) : null;
     const port = production ? 3000 : readInstance(root).port;
@@ -107,7 +109,7 @@ async function stopLegacy(includeBridge) {
         const owner = json(file);
         if (!Number.isSafeInteger(owner.pid) || owner.pid <= 0 || normalized(owner.config || '') !== normalized(join(root, 'local', config))) throw new Error(`旧入口 ${name} 的记录不匹配，未停止。`);
         // Numeric PID only enters this fixed PowerShell query. Paths and record text are not evaluated as code.
-        const query = `[Console]::OutputEncoding=[Text.UTF8Encoding]::new(); $p=Get-Process -Id ${owner.pid} -ErrorAction SilentlyContinue; if($p){$c=Get-CimInstance Win32_Process -Filter 'ProcessId = ${owner.pid}' -ErrorAction Stop; [pscustomobject]@{path=$p.Path;startUtc=$p.StartTime.ToUniversalTime().ToString('o');command=$c.CommandLine}|ConvertTo-Json -Compress}`;
+        const query = `[Console]::OutputEncoding=[Text.UTF8Encoding]::new(); $p=Get-Process -Id ${owner.pid} -ErrorAction SilentlyContinue; if($p){$c=Get-CimInstance Win32_Process -Filter 'ProcessId = ${owner.pid}' -ErrorAction Stop; [pscustomobject]@{path=$p.Path;startUtc=$p.StartTime.ToUniversalTime().ToString('o');command=$c.CommandLine}|ConvertTo-Json -Compress}; exit 0`;
         const output = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', query], { encoding: 'utf8', windowsHide: true }).trim();
         if (!output) { console.log(`${name}: 旧实例已停止。`); continue; }
         const actual = JSON.parse(output);
@@ -124,6 +126,7 @@ async function stopLegacy(includeBridge) {
 
 try {
     if (command === 'init') {
+        if (checkout(root).branch === 'main') throw new Error('main 固定使用 3000 的本机共享版；更新后先构建，再执行 serve，不创建其他开发入口。');
         const port = Number(option('--port'));
         if (!Number.isInteger(port) || port < 1024 || port > 65535 || [3000, 3002, 8188].includes(port)) throw new Error('请指定有效且未占用的开发端口：init --port <端口>。');
         const file = join(state, 'instance.json');
@@ -145,6 +148,6 @@ try {
     } else if (command === 'status') {
         const ports = [3000, 3002];
         try { ports.push(readInstance(root).port); } catch { /* An unconfigured worktree still reports the shared services. */ }
-        for (const port of ports) console.log(JSON.stringify({ port, identity: await identity(port), occupied: await occupied(port) }));
+        for (const port of new Set(ports)) console.log(JSON.stringify({ port, identity: await identity(port), occupied: await occupied(port) }));
     } else throw new Error('支持 init --port、start、serve、bridge、status、stop [--bridge]。');
 } catch (error) { console.error(error.message); process.exitCode = 1; }
