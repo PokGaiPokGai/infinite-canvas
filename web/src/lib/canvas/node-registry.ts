@@ -9,7 +9,8 @@ const definitions = new Map<string, CanvasNodeDefinition>();
 const ownerByType = new Map<string, string>(); // type -> pluginId; built-in nodes use "builtin".
 
 // Increment the registry version on registration or removal to update dependent UI such as creation menus.
-export const useNodeRegistryVersion = create<{ version: number }>(() => ({ version: 0 }));
+export const useNodeRegistryVersion = create<{ version: number; ready: boolean }>(() => ({ version: 0, ready: false }));
+export const markNodeRegistryReady = () => useNodeRegistryVersion.setState({ ready: true });
 function bump() {
     useNodeRegistryVersion.setState((state) => ({ version: state.version + 1 }));
 }

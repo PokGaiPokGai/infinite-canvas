@@ -11,6 +11,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { runtimeEndpoint } from './runtime-core.mjs';
 
 const appRoot = process.env.INFINITE_CANVAS_APP_ROOT ? resolve(process.env.INFINITE_CANVAS_APP_ROOT) : resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const jobsRoot = join(appRoot, '.local', 'codex-image', 'jobs');
@@ -25,6 +26,10 @@ const kritaBridge = createKritaBridge({ appRoot, ensureComfy: createEnsureComfy(
 const blenderBridge = createBlenderBridge({ appRoot });
 const allowedOrigins = new Set(['http://127.0.0.1:3000']);
 const allowedHosts = new Set(['127.0.0.1:3000', '127.0.0.1:3002']);
+const runtime = runtimeEndpoint({ root: resolve(dirname(fileURLToPath(import.meta.url)), '..'), port: 3002, dataRoot: appRoot, mode: 'bridge',
+    active: () => active.size + activeText.size + sharedStorage.activeExecutions,
+    stop: () => { server.close(() => process.exit(0)); server.closeAllConnections(); },
+});
 await access(cliJs);
 await mkdir(jobsRoot, { recursive: true });
 await mkdir(textJobsRoot, { recursive: true });
@@ -334,6 +339,7 @@ async function records(response) {
 
 const server = createServer(async (request, response) => {
     try {
+        if (request.url?.split('?')[0].startsWith('/__canvas')) { runtime(request, response, () => json(response, 404, { error: '未知运行接口。' })); return; }
         if (!allowedHosts.has(request.headers.host)) return json(response, 403, { error: '仅允许本机画布访问。' });
         const origin = request.headers.origin;
         const site = request.headers['sec-fetch-site'];

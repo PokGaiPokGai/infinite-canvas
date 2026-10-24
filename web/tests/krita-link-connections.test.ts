@@ -1,4 +1,5 @@
-import { afterAll, expect, test } from "bun:test";
+import assert from "node:assert/strict";
+import { after as afterAll, test } from "node:test";
 import type { CanvasConnection, CanvasNodeData } from "../src/types/canvas";
 
 const originalStorage = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
@@ -26,15 +27,15 @@ test("Krita Link write mode accepts an image and exposes an image output", () =>
         node("text", CanvasNodeType.Text),
         node("config", CanvasNodeType.Config),
     ];
-    expect(normalizeConnection("read", "config", nodes, "source")).toEqual({ fromNodeId: "read", toNodeId: "config" });
-    expect(normalizeConnection("image", "write", nodes, "source")).toEqual({ fromNodeId: "image", toNodeId: "write" });
-    expect(normalizeConnection("write", "config", nodes, "source")).toEqual({ fromNodeId: "write", toNodeId: "config" });
-    expect(normalizeConnection("write", "write-next", nodes, "source")).toEqual({ fromNodeId: "write", toNodeId: "write-next" });
-    expect(normalizeConnection("image", "read", nodes, "source")).toBeNull();
-    expect(normalizeConnection("text", "write", nodes, "source")).toBeNull();
-    expect(normalizeConnection("read", "write", nodes, "source")).toEqual({ fromNodeId: "read", toNodeId: "write" });
-    expect(wouldCreateConnectionCycle("write", "config", [{ id: "existing", fromNodeId: "config", toNodeId: "write" }])).toBe(true);
-    expect(wouldCreateConnectionCycle("write", "config", [{ id: "disabled", fromNodeId: "config", toNodeId: "write", enabled: false }])).toBe(true);
+    assert.deepStrictEqual(normalizeConnection("read", "config", nodes, "source"), { fromNodeId: "read", toNodeId: "config" });
+    assert.deepStrictEqual(normalizeConnection("image", "write", nodes, "source"), { fromNodeId: "image", toNodeId: "write" });
+    assert.deepStrictEqual(normalizeConnection("write", "config", nodes, "source"), { fromNodeId: "write", toNodeId: "config" });
+    assert.deepStrictEqual(normalizeConnection("write", "write-next", nodes, "source"), { fromNodeId: "write", toNodeId: "write-next" });
+    assert.strictEqual(normalizeConnection("image", "read", nodes, "source"), null);
+    assert.strictEqual(normalizeConnection("text", "write", nodes, "source"), null);
+    assert.deepStrictEqual(normalizeConnection("read", "write", nodes, "source"), { fromNodeId: "read", toNodeId: "write" });
+    assert.strictEqual(wouldCreateConnectionCycle("write", "config", [{ id: "existing", fromNodeId: "config", toNodeId: "write" }]), true);
+    assert.strictEqual(wouldCreateConnectionCycle("write", "config", [{ id: "disabled", fromNodeId: "config", toNodeId: "write", enabled: false }]), true);
 });
 
 test("Krita Link preserves a dormant input edge and restores it after switching back to write", () => {
@@ -51,17 +52,17 @@ test("Krita Link preserves a dormant input edge and restores it after switching 
         const edge: CanvasConnection = { id: "preserved", fromNodeId: image.id, toNodeId: read.id, role: "style", instruction: "只参考笔触" };
         const savedEdge = { ...edge };
 
-        expect(hasCanvasNodeHandle(read, "source")).toBe(true);
-        expect(hasCanvasNodeHandle(read, "target")).toBe(false);
-        expect(hasCanvasNodeHandle(write, "source")).toBe(true);
-        expect(hasCanvasNodeHandle(write, "target")).toBe(true);
-        expect(isConnectionOperational(edge, image, read)).toBe(false);
-        expect(isConnectionOperational(edge, image, write)).toBe(true);
-        expect(edge).toEqual(savedEdge);
-        expect(isConnectionOperational({ ...edge, enabled: false }, image, write)).toBe(false);
+        assert.strictEqual(hasCanvasNodeHandle(read, "source"), true);
+        assert.strictEqual(hasCanvasNodeHandle(read, "target"), false);
+        assert.strictEqual(hasCanvasNodeHandle(write, "source"), true);
+        assert.strictEqual(hasCanvasNodeHandle(write, "target"), true);
+        assert.strictEqual(isConnectionOperational(edge, image, read), false);
+        assert.strictEqual(isConnectionOperational(edge, image, write), true);
+        assert.deepStrictEqual(edge, savedEdge);
+        assert.strictEqual(isConnectionOperational({ ...edge, enabled: false }, image, write), false);
 
         // A dormant edge still reserves its place in the possible graph: restoring the port must not create a cycle.
-        expect(wouldCreateConnectionCycle(read.id, image.id, [edge])).toBe(true);
+        assert.strictEqual(wouldCreateConnectionCycle(read.id, image.id, [edge]), true);
     } finally {
         unregisterPluginNodes(pluginId);
     }
@@ -79,14 +80,14 @@ test("Config keeps its output port while non-image output makes a retained Krita
         const write = node("write", "krita-link:link", { krita: { kind: "link", mode: "write" } });
         const edge: CanvasConnection = { id: "config-output", fromNodeId: configImage.id, toNodeId: write.id };
 
-        expect(hasCanvasNodeHandle(configImage, "source")).toBe(true);
-        expect(hasCanvasNodeHandle(configText, "source")).toBe(true);
-        expect(normalizeConnection(configImage.id, write.id, [configImage, write], "source")).toEqual({ fromNodeId: configImage.id, toNodeId: write.id });
-        expect(normalizeConnection(configText.id, write.id, [configText, write], "source")).toBeNull();
-        expect(isConnectionOperational(edge, configImage, write)).toBe(true);
-        expect(isConnectionOperational(edge, configText, write)).toBe(false);
-        expect(isConnectionOperational(edge, configImage, write)).toBe(true);
-        expect(edge.enabled).toBeUndefined();
+        assert.strictEqual(hasCanvasNodeHandle(configImage, "source"), true);
+        assert.strictEqual(hasCanvasNodeHandle(configText, "source"), true);
+        assert.deepStrictEqual(normalizeConnection(configImage.id, write.id, [configImage, write], "source"), { fromNodeId: configImage.id, toNodeId: write.id });
+        assert.strictEqual(normalizeConnection(configText.id, write.id, [configText, write], "source"), null);
+        assert.strictEqual(isConnectionOperational(edge, configImage, write), true);
+        assert.strictEqual(isConnectionOperational(edge, configText, write), false);
+        assert.strictEqual(isConnectionOperational(edge, configImage, write), true);
+        assert.strictEqual(edge.enabled, undefined);
     } finally {
         unregisterPluginNodes(pluginId);
     }

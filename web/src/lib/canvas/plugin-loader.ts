@@ -89,12 +89,14 @@ export function uninstallPlugin(id: string) {
     usePluginStore.getState().remove(id);
 }
 
-let loaded = false;
+let loading: Promise<void> | undefined;
 
 // Load installed and enabled plugins at application startup.
-export async function ensurePluginsLoaded() {
-    if (loaded) return;
-    loaded = true;
+export function ensurePluginsLoaded() {
+    return loading ||= loadEnabledPlugins();
+}
+
+async function loadEnabledPlugins() {
     await usePluginStore.persist.rehydrate();
     await loadLocalPlugins(); // Discover disabled local plugins first, then activate all enabled records.
     const records = usePluginStore.getState().plugins.filter((record) => record.enabled);

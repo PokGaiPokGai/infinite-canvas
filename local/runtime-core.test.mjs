@@ -1,0 +1,60 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { checkout, runtimeEndpoint, verifyBuild, sourceFingerprint, buildDirectory, verifyDependencies } from './runtime-core.mjs';
+import { withTestDirectory } from './test-fixture.mjs';
+
+test('build mode and source fingerprint detect the wrong build and uncommitted source changes', () => withTestDirectory(async root => {
+    execFileSync('git', ['init', '--initial-branch=codex/runtime-test', root], { windowsHide: true, stdio: 'ignore' });
+    await mkdir(join(root, 'web'));
+    await writeFile(join(root, 'web/source.ts'), 'export const value = 1;');
+    const directory = buildDirectory(root);
+    await mkdir(directory, { recursive: true });
+    await writeFile(join(directory, 'index.html'), '<main />');
+    const manifest = { head: checkout(root).head, mode: 'local-shared', fingerprint: sourceFingerprint(root) };
+    await writeFile(join(directory, 'canvas-build.json'), JSON.stringify(manifest));
+    assert.deepEqual(verifyBuild(root), manifest);
+    await writeFile(join(directory, 'canvas-build.json'), JSON.stringify({ ...manifest, mode: 'browser' }));
+    assert.throws(() => verifyBuild(root), /不一致/);
+    await writeFile(join(directory, 'canvas-build.json'), JSON.stringify(manifest));
+    await writeFile(join(root, 'web/source.ts'), 'export const value = 2;');
+    assert.throws(() => verifyBuild(root), /不一致/);
+}));
+
+test('installed dependency lock is checked on every launch, with Windows newline normalization', () => withTestDirectory(async root => {
+    await mkdir(join(root, 'web/node_modules/vite/bin'), { recursive: true });
+    await mkdir(join(root, 'web/node_modules/.pnpm'), { recursive: true });
+    await writeFile(join(root, 'web/node_modules/vite/bin/vite.js'), '');
+    await writeFile(join(root, 'web/package.json'), '{"dependencies":{}}');
+    await writeFile(join(root, 'web/pnpm-lock.yaml'), 'lockfileVersion: 9\r\n');
+    await writeFile(join(root, 'web/node_modules/.pnpm/lock.yaml'), 'lockfileVersion: 9\n');
+    assert.ok(verifyDependencies(root));
+    await writeFile(join(root, 'web/node_modules/.pnpm/lock.yaml'), 'lockfileVersion: 8\n');
+    assert.throws(() => verifyDependencies(root), /已安装依赖/);
+}));
+
+test('identity never exposes the owner nonce; shutdown rejects foreign origins, wrong tokens and active tasks', () => {
+    let stopped = 0, active = 1;
+    const handler = runtimeEndpoint({ root: process.cwd(), dataRoot: process.cwd(), port: 3080, mode: 'development', token: 'owned-secret', active: () => active, stop: () => stopped++ });
+    const call = (url, headers = {}, method = 'GET') => {
+        const response = new EventEmitter();
+        response.writeHead = (status) => { response.status = status; };
+        response.end = bytes => { response.body = JSON.parse(bytes); response.emit('finish'); };
+        handler({ url, method, headers: { host: '127.0.0.1:3080', ...headers } }, response, () => assert.fail('Unexpected route'));
+        return response;
+    };
+    const identity = call('/__canvas').body;
+    assert.equal(identity.pid, process.pid);
+    assert.equal(identity.branch, checkout(process.cwd()).branch);
+    assert.ok(!JSON.stringify(identity).includes('owned-secret'));
+    assert.equal(call('/__canvas/stop', { 'x-canvas-owner': 'wrong' }, 'POST').status, 403);
+    assert.equal(call('/__canvas/stop', { 'x-canvas-owner': 'owned-secret', origin: 'https://outside.invalid' }, 'POST').status, 403);
+    assert.equal(call('/__canvas/stop', { 'x-canvas-owner': 'owned-secret' }, 'POST').status, 409);
+    assert.equal(stopped, 0);
+    active = 0;
+    assert.equal(call('/__canvas/stop', { 'x-canvas-owner': 'owned-secret' }, 'POST').status, 200);
+    assert.equal(stopped, 1);
+});

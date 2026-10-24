@@ -124,12 +124,14 @@ AI API Key、Base URL、画布、素材和生成记录默认保存在浏览器�
 
 ### 本地开发
 
+Windows 本机共享版与多 worktree 开发请先阅读 [本机运行说明](local/README.md)。以下默认开发命令使用浏览器独立存储。
+
 ```bash
 git clone git@github.com:basketikun/infinite-canvas.git
 cd infinite-canvas
 cd web
-bun install
-bun run dev
+pnpm install --frozen-lockfile --ignore-scripts
+pnpm run dev
 ```
 
 ### Docker 运行

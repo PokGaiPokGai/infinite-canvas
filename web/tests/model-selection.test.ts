@@ -1,4 +1,5 @@
-import { afterAll, expect, test } from "bun:test";
+import assert from "node:assert/strict";
+import { after as afterAll, test } from "node:test";
 import type { AiConfig, ModelCapability } from "../src/stores/use-config-store";
 import type { CanvasNodeData } from "../src/types/canvas";
 
@@ -53,48 +54,48 @@ const videoNode = (model: string): CanvasNodeData => ({
 
 test("a saved video on a removed provider is not replaced by the default video model", () => {
     const selected = buildGenerationConfig(config, videoNode("removed::video-a"), "video");
-    expect(selected.model).toBe("removed::video-a");
-    expect(ready(selected, selected.model)).toBe(false);
+    assert.strictEqual(selected.model, "removed::video-a");
+    assert.strictEqual(ready(selected, selected.model), false);
 });
 
 test("removing a model from an existing provider prevents retry even with valid credentials", () => {
     const selected = buildGenerationConfig(config, videoNode("replacement::deleted-video"), "video");
-    expect(selected.model).toBe("replacement::deleted-video");
-    expect(ready(selected, selected.model)).toBe(false);
+    assert.strictEqual(selected.model, "replacement::deleted-video");
+    assert.strictEqual(ready(selected, selected.model), false);
 });
 
 test("task recovery rejects a missing provider instead of querying the first provider", () => {
-    expect(ready(config, "removed::video-a")).toBe(false);
-    expect(ready(config, "unknown-video")).toBe(false);
+    assert.strictEqual(ready(config, "removed::video-a"), false);
+    assert.strictEqual(ready(config, "unknown-video"), false);
 });
 
 test("an explicitly selected unavailable default is not replaced by the built-in default", () => {
     const selected = buildGenerationConfig({ ...config, videoModel: "removed::video-a" }, undefined, "video");
-    expect(selected.model).toBe("removed::video-a");
-    expect(ready(selected, selected.model)).toBe(false);
+    assert.strictEqual(selected.model, "removed::video-a");
+    assert.strictEqual(ready(selected, selected.model), false);
 });
 
 test("a new node without a selection still uses its configured default", () => {
     const selected = buildGenerationConfig(config, undefined, "video");
-    expect(selected.model).toBe("replacement::video-b");
-    expect(ready(selected, selected.model)).toBe(true);
+    assert.strictEqual(selected.model, "replacement::video-b");
+    assert.strictEqual(ready(selected, selected.model), true);
 });
 
 test("switching generation capability still selects a model of the new capability", () => {
-    expect(resolveModelForCapability(config, "replacement::image-a", "video")).toBe("replacement::video-b");
+    assert.strictEqual(resolveModelForCapability(config, "replacement::image-a", "video"), "replacement::video-b");
 });
 
 test("changing only the key on the same provider preserves the saved model and task", () => {
     const node = videoNode("replacement::video-a");
     const selected = buildGenerationConfig({ ...config, channels: [{ ...config.channels[0], apiKey: "rotated-key" }] }, node, "video");
-    expect(selected.model).toBe("replacement::video-a");
-    expect(ready(selected, selected.model)).toBe(true);
-    expect(node.metadata?.videoTaskId).toBe("original-task");
-    expect(ready({ ...selected, channels: [{ ...config.channels[0], apiKey: "" }] }, selected.model)).toBe(false);
+    assert.strictEqual(selected.model, "replacement::video-a");
+    assert.strictEqual(ready(selected, selected.model), true);
+    assert.strictEqual(node.metadata?.videoTaskId, "original-task");
+    assert.strictEqual(ready({ ...selected, channels: [{ ...config.channels[0], apiKey: "" }] }, selected.model), false);
 });
 
 test("unavailable explicit selections are preserved for every generation capability", () => {
     for (const capability of ["image", "video", "text", "audio"] as ModelCapability[]) {
-        expect(resolveModelForCapability(config, `removed::${capability}`, capability)).toBe(`removed::${capability}`);
+        assert.strictEqual(resolveModelForCapability(config, `removed::${capability}`, capability), `removed::${capability}`);
     }
 });

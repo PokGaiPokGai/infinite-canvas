@@ -12,3 +12,10 @@ web/out
 *.log
 .env*
 !.env.example
+
+# Local databases, browser sessions, worktrees, backups and runtime builds
+.local/
+**/.local/
+**/.git
+**/node_modules
+**/dist

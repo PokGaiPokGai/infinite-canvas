@@ -6,6 +6,9 @@ import { isConnectionOperational } from "./canvas-connection-state";
 import { MASK_TYPES, processMask, maskInputKey } from "./image-mask";
 import { nodeResult, validateWorkflow } from "./workflow-graph";
 import { REFERENCE_PACK, referencePackText } from "./canvas-production";
+import { withProcessingOwnership } from './processing-ownership';
+import { flushSync } from 'react-dom';
+import { flushSharedWrites } from '../shared-storage';
 
 const runs = new Map<string, AbortController>();
 const runKey = (ctx: CanvasNodeContext) => `${ctx.projectId}:${ctx.node.id}`;
@@ -17,13 +20,18 @@ export const resultMetadata = (result?: ProcessResult): CanvasNodeMetadata => ({
 export async function managedProcessing(ctx: CanvasNodeContext, work: (signal: AbortSignal) => Promise<CanvasNodeMetadata>) {
     if (runs.has(runKey(ctx))) return;
     const controller = new AbortController(); runs.set(runKey(ctx), controller);
-    ctx.updateMetadata({ status: "loading", errorDetails: undefined });
     try {
-        const result = await work(controller.signal);
-        controller.signal.throwIfAborted();
-        if (ctx.getNode(ctx.node.id)) ctx.updateMetadata({ ...result, status: "success" });
-    } catch (error) {
-        if (ctx.getNode(ctx.node.id)) ctx.updateMetadata({ status: "error", errorDetails: controller.signal.aborted ? "已取消。已完成的批次结果保留，可继续未完成项。" : error instanceof Error ? error.message : "处理失败。" });
+        await withProcessingOwnership(ctx.projectId, ctx.node.id, controller, async () => {
+            ctx.updateMetadata({ status: "loading", errorDetails: undefined });
+            try {
+                const result = await work(controller.signal);
+                controller.signal.throwIfAborted();
+                if (ctx.getNode(ctx.node.id)) flushSync(() => ctx.updateMetadata({ ...result, status: "success" }));
+            } catch (error) {
+                if (ctx.getNode(ctx.node.id)) flushSync(() => ctx.updateMetadata({ status: "error", errorDetails: controller.signal.aborted ? "已停止本页等待。已提交的生成可能仍在后台完成，请核对后再继续未完成项。" : error instanceof Error ? error.message : "处理失败。" }));
+            }
+            await flushSharedWrites();
+        });
     } finally { runs.delete(runKey(ctx)); }
 }
 
