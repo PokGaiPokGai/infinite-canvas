@@ -8,5 +8,6 @@ export type PaintMaskDrawing = {
     width: number;
     height: number;
     strokes: MaskStroke[];
+    previewColor?: string;
     output?: CanvasMediaOutput;
 };

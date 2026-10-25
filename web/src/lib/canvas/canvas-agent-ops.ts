@@ -79,7 +79,7 @@ export function applyCanvasAgentOps(snapshot: CanvasAgentSnapshot, ops?: CanvasA
             const from = nodes.find((node) => node.id === op.fromNodeId);
             const to = nodes.find((node) => node.id === op.toNodeId);
             const guardedEdge = from?.type?.startsWith("process:") || to?.type?.startsWith("process:") || from?.type?.startsWith("production:") || to?.type?.startsWith("production:") || from?.type === "version-stack:images" || to?.type === "version-stack:images" || from?.type === "image-compare:compare" || to?.type === "image-compare:compare" || (!!from && isImageLinkNode(from)) || (!!to && isImageLinkNode(to)) || from?.type === CanvasNodeType.Config || to?.type === CanvasNodeType.Config;
-            const validEdge = !guardedEdge || normalizeConnection(op.fromNodeId, op.toNodeId, nodes, "source")?.fromNodeId === op.fromNodeId;
+            const validEdge = !guardedEdge || normalizeConnection(op.fromNodeId, op.toNodeId, nodes, "source", connections)?.fromNodeId === op.fromNodeId;
             if (!exists && from && to && validEdge && (!guardedEdge || !wouldCreateConnectionCycle(op.fromNodeId, op.toNodeId, connections))) connections = [...connections, { id: op.id || nanoid(), fromNodeId: op.fromNodeId, toNodeId: op.toNodeId, ...(op.role ? { role: op.role } : {}), instruction: op.instruction, order: op.order, enabled: op.enabled }];
         }
         if (op.type === "set_viewport" && op.viewport) viewport = op.viewport;

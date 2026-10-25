@@ -9,6 +9,7 @@ import { pickImageSource } from "@/lib/image-thumbnail";
 import { previewUrlFor, subscribeImagePreviews, getImagePreviewRevision } from "@/services/image-storage";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
 import { hasCanvasNodeHandle } from "@/lib/canvas/canvas-connection-state";
+import { canvasSocketLabels, getCanvasInputSocket, getCanvasOutputType, getCanvasSocketColor } from "@/lib/canvas/canvas-sockets";
 import { IMAGE_COMPARE } from "@/lib/canvas/image-compare";
 import { KRITA_LINK } from "@/lib/canvas/krita-link";
 import { BLENDER_LINK } from "@/lib/canvas/blender-link";
@@ -348,6 +349,7 @@ export const CanvasNode = React.memo(function CanvasNode({
                 height: data.height,
                 transition: "box-shadow 200ms ease",
                 contain: "layout style",
+                ...(isImageLinkNode(data) ? { "--link-node-width": `${data.width}px`, "--link-node-height": `${data.height}px` } : {}),
             }}
             onMouseEnter={() => {
                 setHovered(true);
@@ -488,8 +490,8 @@ export const CanvasNode = React.memo(function CanvasNode({
                 {!referenceSelectionState ? <ResizeHandle corner="bottom-right" horizontalOnly={data.type === CanvasNodeType.Config} onMouseDown={handleResizeMouseDown} /> : null}
             </div>
 
-            {!referenceSelectionState && hasCanvasNodeHandle(data, "target") ? <ConnectionHandleDot side="left" visible={hovered || isSelected || isConnecting} onMouseDown={(event) => onConnectStart(event, data.id, "target")} /> : null}
-            {!referenceSelectionState && hasCanvasNodeHandle(data, "source") ? <ConnectionHandleDot side="right" visible={hovered || isSelected || isConnecting} onMouseDown={(event) => onConnectStart(event, data.id, "source")} /> : null}
+            {!referenceSelectionState && hasCanvasNodeHandle(data, "target") ? <ConnectionHandleSocket node={data} side="left" visible={hovered || isSelected || isConnecting} onMouseDown={(event) => onConnectStart(event, data.id, "target")} /> : null}
+            {!referenceSelectionState && hasCanvasNodeHandle(data, "source") ? <ConnectionHandleSocket node={data} side="right" visible={hovered || isSelected || isConnecting} onMouseDown={(event) => onConnectStart(event, data.id, "source")} /> : null}
 
             {isImageLinkNode(data) && showPanel && renderPanel ? (
                 <CanvasPanel panel={panelController} className="absolute left-full top-0 z-[70] pl-3" style={{ transform: `scale(${1 / scale})`, transformOrigin: "top left" }} data-node-panel={data.id}>
@@ -1033,17 +1035,25 @@ function ResizeHandle({ corner, horizontalOnly = false, onMouseDown }: { corner:
     return <div className={`absolute z-50 size-7 ${positionClass} ${horizontalOnly ? "cursor-ew-resize" : corner === "top-left" || corner === "bottom-right" ? "cursor-nwse-resize" : "cursor-nesw-resize"}`} onMouseDown={(event) => onMouseDown(event, corner)} />;
 }
 
-function ConnectionHandleDot({ side, visible, onMouseDown }: { side: "left" | "right"; visible: boolean; onMouseDown: (event: React.MouseEvent) => void }) {
+function ConnectionHandleSocket({ node, side, visible, onMouseDown }: { node: CanvasNodeData; side: "left" | "right"; visible: boolean; onMouseDown: (event: React.MouseEvent) => void }) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const input = side === "left";
+    const socket = input ? getCanvasInputSocket(node) : { type: getCanvasOutputType(node), multiple: false };
+    const label = `${canvasSocketLabels[socket.type]} · ${input ? socket.multiple ? "多输入" : "单输入" : "输出"}`;
 
     return (
         <div
+            data-socket-direction={input ? "target" : "source"}
+            data-socket-type={socket.type}
+            data-socket-multiple={socket.multiple}
+            title={label}
+            aria-label={label}
             className={`absolute top-1/2 z-30 flex size-12 -translate-y-1/2 cursor-crosshair items-center justify-center transition-opacity duration-150 ${
                 side === "left" ? "-left-6" : "-right-6"
             } ${visible ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"}`}
             onMouseDown={onMouseDown}
         >
-            <div className="size-3 rounded-full border-2 transition-all hover:scale-125" style={{ background: theme.node.panel, borderColor: theme.node.muted }} />
+            <div className={`border transition-transform hover:scale-125 ${socket.multiple ? "h-[22px] w-3 rounded-[3px]" : "size-3 rounded-full"}`} style={{ background: getCanvasSocketColor(node, input ? "target" : "source", theme), borderColor: theme.socket.border }} />
         </div>
     );
 }

@@ -2,6 +2,7 @@ import { CanvasNodeType, type CanvasConnection, type CanvasNodeData, type Connec
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
 import { hasCanvasNodeHandle } from "@/lib/canvas/canvas-connection-state";
 import { isImageLinkNode } from "@/lib/canvas/canvas-input-role";
+import { getCanvasInputSocket } from "./canvas-sockets";
 
 export function nodeBounds(nodes: CanvasNodeData[]) {
     return nodes.reduce(
@@ -141,11 +142,14 @@ export function getConnectionTargetAnchor(node: CanvasNodeData, current: Connect
     };
 }
 
-export function normalizeConnection(firstNodeId: string, secondNodeId: string, nodes: CanvasNodeData[], firstHandleType: "source" | "target") {
+export function normalizeConnection(firstNodeId: string, secondNodeId: string, nodes: CanvasNodeData[], firstHandleType: "source" | "target", connections: CanvasConnection[] = []) {
     const first = nodes.find((node) => node.id === firstNodeId);
     const second = nodes.find((node) => node.id === secondNodeId);
     if (!first || !second || first.id === second.id) return null;
-    const valid = (from: CanvasNodeData, to: CanvasNodeData) => hasCanvasNodeHandle(from, "source") && hasCanvasNodeHandle(to, "target") ? { fromNodeId: from.id, toNodeId: to.id } : null;
+    const valid = (from: CanvasNodeData, to: CanvasNodeData) => {
+        if (!getCanvasInputSocket(to).multiple && connections.some(connection => connection.toNodeId === to.id)) return null;
+        return hasCanvasNodeHandle(from, "source") && hasCanvasNodeHandle(to, "target") ? { fromNodeId: from.id, toNodeId: to.id } : null;
+    };
     if (first.type.startsWith("process:") || second.type.startsWith("process:")) {
         const from = firstHandleType === "source" ? first : second;
         const to = firstHandleType === "source" ? second : first;
@@ -189,12 +193,7 @@ export function normalizeConnection(firstNodeId: string, secondNodeId: string, n
         if (isImageLinkNode(to) && from.type !== CanvasNodeType.Config && from.type !== CanvasNodeType.Image && from.type !== "krita-link:source" && !isImageLinkNode(from) && getNodeDefinition(from.type)?.resource?.(from)?.kind !== "image") return null;
         return valid(from, to);
     }
-    if (second.type === CanvasNodeType.Group) return null;
-    if (first.type === CanvasNodeType.Config && second.type === CanvasNodeType.Config) return firstHandleType === "source" ? valid(first, second) : valid(second, first);
-    if (second.type === CanvasNodeType.Config) return valid(first, second);
-    if (first.type === CanvasNodeType.Config && firstHandleType === "target") return valid(second, first);
-    if (first.type === CanvasNodeType.Config) return valid(first, second);
-    return valid(first, second);
+    return firstHandleType === "source" ? valid(first, second) : valid(second, first);
 }
 
 export function wouldCreateConnectionCycle(fromNodeId: string, toNodeId: string, connections: CanvasConnection[]) {

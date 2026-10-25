@@ -5,6 +5,18 @@
 
 @custom-variant dark (&:is(.dark *));
 
+@property --canvas-link-phase {
+    syntax: "<number>";
+    inherits: true;
+    initial-value: 0;
+}
+
+@property --link-border-inset {
+    syntax: "<length>";
+    inherits: false;
+    initial-value: -2px;
+}
+
 @theme inline {
     --color-background: var(--background);
     --color-foreground: var(--foreground);
@@ -141,18 +153,40 @@
 }
 
 @layer utilities {
-    .krita-link-aurora, .krita-read-refresh {
+    :root {
+        --canvas-link-scale: 1.65;
         --krita-link-orange: #f79438;
         --krita-link-pink: #ec5187;
         --krita-link-purple: #aa63d5;
         --krita-link-blue: #508cd4;
         --krita-link-green: #5ac9ac;
-        --link-border-gradient: linear-gradient(135deg, var(--krita-link-orange) 0%, var(--krita-link-pink) 28%, var(--krita-link-purple) 53%, var(--krita-link-blue) 77%, var(--krita-link-green) 100%);
+        --krita-flow-0: var(--krita-link-orange);
+        --krita-flow-1: var(--krita-link-pink);
+        --krita-flow-2: var(--krita-link-purple);
+        --krita-flow-3: var(--krita-link-blue);
+        --krita-flow-4: var(--krita-link-green);
+        --blender-link-orange: #e87d0d;
+        --blender-flow-0: #fbc38b;
+        --blender-flow-1: var(--blender-link-orange);
+        --blender-flow-2: #d85a0b;
+        --blender-flow-3: #f39435;
+        --blender-flow-4: #ffd2a3;
+    }
+
+    [data-canvas-surface] {
+        animation: canvas-link-flow 7s ease-in-out infinite alternate;
+    }
+
+    @keyframes canvas-link-flow {
+        to { --canvas-link-phase: 1; }
+    }
+
+    .krita-link-aurora {
+        --link-border-gradient: linear-gradient(135deg in srgb, var(--krita-flow-0) 0%, var(--krita-flow-1) 28%, var(--krita-flow-2) 53%, var(--krita-flow-3) 77%, var(--krita-flow-4) 100%);
     }
 
     .blender-link-aurora {
-        --blender-link-orange: #e87d0d;
-        --link-border-gradient: linear-gradient(135deg, #fbc38b 0%, var(--blender-link-orange) 28%, #d85a0b 53%, #f39435 77%, #ffd2a3 100%);
+        --link-border-gradient: linear-gradient(135deg in srgb, var(--blender-flow-0) 0%, var(--blender-flow-1) 28%, var(--blender-flow-2) 53%, var(--blender-flow-3) 77%, var(--blender-flow-4) 100%);
         --link-border-glow: rgba(232, 125, 13, .45);
         --link-border-highlight: rgba(255, 219, 179, .9);
     }
@@ -160,23 +194,24 @@
     :is(.krita-link-aurora, .blender-link-aurora)::before {
         content: "";
         position: absolute;
-        inset: -2px;
+        inset: var(--link-border-inset);
         z-index: 2;
         border-radius: inherit;
         padding: 3px;
         pointer-events: none;
         background: var(--link-border-gradient, linear-gradient(135deg, #f79438 0%, #ec5187 28%, #aa63d5 53%, #508cd4 77%, #5ac9ac 100%));
-        background-size: 165% 165%;
-        background-position: 0% 0%;
+        /* Anchor the colour field to the node, even while the selected border expands. */
+        background-size: calc(var(--link-node-width) * var(--canvas-link-scale)) calc(var(--link-node-height) * var(--canvas-link-scale));
+        background-position: calc(-2px - var(--link-border-inset) - var(--link-node-width) * (var(--canvas-link-scale) - 1) * var(--canvas-link-phase)) calc(-2px - var(--link-border-inset) - var(--link-node-height) * (var(--canvas-link-scale) - 1) * var(--canvas-link-phase));
+        background-repeat: no-repeat;
         -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
         -webkit-mask-composite: xor;
         mask-composite: exclude;
-        animation: krita-link-diagonal 7s ease-in-out infinite alternate;
-        transition: inset 280ms cubic-bezier(.22, 1, .36, 1), padding 280ms cubic-bezier(.22, 1, .36, 1), filter 280ms ease;
+        transition: --link-border-inset 280ms cubic-bezier(.22, 1, .36, 1), padding 280ms cubic-bezier(.22, 1, .36, 1), filter 280ms ease;
     }
 
     :is(.krita-link-aurora, .blender-link-aurora)[data-selected="true"]::before {
-        inset: -3px;
+        --link-border-inset: -3px;
         padding: 6px;
         filter: drop-shadow(0 0 7px var(--link-border-glow, rgba(166, 221, 255, .45)));
     }
@@ -208,10 +243,6 @@
         animation: krita-link-shimmer 5.2s ease-in-out infinite alternate;
     }
 
-    @keyframes krita-link-diagonal {
-        to { background-position: 100% 100%; }
-    }
-
     @keyframes krita-link-shimmer {
         0% { background-position: 0% 0%; opacity: .35; }
         24% { opacity: .8; }
@@ -221,6 +252,7 @@
     }
 
     @media (prefers-reduced-motion: reduce) {
+        [data-canvas-surface] { animation: none; }
         :is(.krita-link-aurora, .blender-link-aurora)::before { animation: none; transition: none; }
         :is(.krita-link-aurora, .blender-link-aurora)[data-selected="true"]::after { animation: none; opacity: .65; }
     }

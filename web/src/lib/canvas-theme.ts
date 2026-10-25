@@ -21,6 +21,10 @@ export const canvasThemes = {
             muted: "#78716c",
             faint: "#a8a29e",
         },
+        socket: {
+            image: "#b18a24", mask: "#777985", text: "#258b74", video: "#8261bf",
+            audio: "#367fb0", reference: "#bd703c", mixed: "#76848e", border: "#494640",
+        },
         toolbar: {
             panel: "rgba(251,250,247,.96)",
             border: "#d6d3ca",
@@ -48,6 +52,10 @@ export const canvasThemes = {
             text: "#f5f5f4",
             muted: "#d6d3d1",
             faint: "#78716c",
+        },
+        socket: {
+            image: "#e4c565", mask: "#b8b9c2", text: "#65c8ad", video: "#ab8ce2",
+            audio: "#6aafe2", reference: "#e39b66", mixed: "#97a7b3", border: "#242321",
         },
         toolbar: {
             panel: "rgba(31,29,26,.96)",

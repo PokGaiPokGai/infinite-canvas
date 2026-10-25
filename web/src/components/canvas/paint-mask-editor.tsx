@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { Eraser, MousePointer2, Pencil, Redo2, Undo2 } from "lucide-react";
 import { CanvasPanel, useCanvasPanel } from "./canvas-panel";
 import { useCanvasPopoverAnchor } from "./use-canvas-popover-anchor";
-import { DRAW_WEIGHTS, maskStrokeBounds, maskStrokeSegments, maskStrokeTouches } from "@/lib/canvas/paint-mask";
+import { DEFAULT_MASK_PREVIEW_COLOR, DRAW_WEIGHTS, maskStrokeBounds, maskStrokeSegments, maskStrokeTouches } from "@/lib/canvas/paint-mask";
 import type { MaskPoint, MaskStroke, PaintMaskDrawing } from "@/types/paint-mask";
 import type { CanvasTheme } from "@/lib/canvas-theme";
 import styles from "./paint-mask-editor.module.css";
@@ -31,7 +31,7 @@ export function PaintMaskEditor({ initial, image, theme, hostRef, saving, error,
     const current = useRef(drawing);
     const [tool, setTool] = useState<Tool>("pen");
     const [width, setWidth] = useState<number>(DRAW_WEIGHTS[0]);
-    const [color, setColor] = useState("#ffffff");
+    const [color, setColor] = useState(initial.previewColor ?? DEFAULT_MASK_PREVIEW_COLOR);
     const [popup, setPopup] = useState<"color" | "width" | null>(null);
     const [selected, setSelected] = useState<Set<string>>(new Set());
     const [marquee, setMarquee] = useState<ReturnType<typeof maskStrokeBounds> | null>(null);
@@ -48,7 +48,8 @@ export function PaintMaskEditor({ initial, image, theme, hostRef, saving, error,
     useLayoutEffect(() => { canvasRef.current = hostRef.current?.closest("section") || null; }, [hostRef]);
     const canvasRect = useCanvasPopoverAnchor(canvasRef, true);
     const panel = useCanvasPanel({ onDismiss: onCancel });
-    const dirty = JSON.stringify(drawing.strokes) !== JSON.stringify(initial.strokes);
+    const initialColor = initial.previewColor ?? DEFAULT_MASK_PREVIEW_COLOR;
+    const dirty = color !== initialColor || JSON.stringify(drawing.strokes) !== JSON.stringify(initial.strokes);
     const choose = (ids: Set<string>) => { selectedRef.current = ids; setSelected(ids); };
     const renderDraft = () => {
         if (frame.current !== null) return;
@@ -86,8 +87,8 @@ export function PaintMaskEditor({ initial, image, theme, hostRef, saving, error,
     const save = () => {
         cancelGesture.current?.();
         if (saving) return;
-        if (JSON.stringify(current.current.strokes) === JSON.stringify(initial.strokes)) onCancel();
-        else onSave(current.current);
+        if (color === initialColor && JSON.stringify(current.current.strokes) === JSON.stringify(initial.strokes)) onCancel();
+        else onSave({ ...current.current, previewColor: color });
     };
     const actions = useRef({ undo, redo, save, onCancel, removeSelected, setWeight, popup, saving });
     useLayoutEffect(() => { actions.current = { undo, redo, save, onCancel, removeSelected, setWeight, popup, saving }; });

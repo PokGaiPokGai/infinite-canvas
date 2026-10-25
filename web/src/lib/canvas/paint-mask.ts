@@ -5,11 +5,11 @@ import type { MaskPoint, MaskStroke, PaintMaskDrawing } from "@/types/paint-mask
 import type { ProductionImage } from "@/types/canvas-production";
 
 export const MASK_PAINT = "process:mask-paint";
+export const DEFAULT_MASK_PREVIEW_COLOR = "#323b4a";
 export const DRAW_WEIGHTS = [3, 8, 18, 34] as const;
 export const paintMaskSourceKey = (source: ProductionImage) => JSON.stringify([source.storageKey || source.content, source.naturalWidth, source.naturalHeight]);
 export function getPaintMaskSource(node: CanvasNodeData, inputs = node.metadata?.productionInputs || []) {
-    const id = node.metadata?.paintMaskSourceId ?? node.metadata?.paintMask?.sourceId;
-    return id ? inputs.find(input => input.id === id) : inputs.length === 1 ? inputs[0] : undefined;
+    return inputs.length === 1 ? inputs[0] : undefined;
 }
 export function paintMaskMatches(drawing: PaintMaskDrawing | undefined, source: ProductionImage | undefined) {
     return !!drawing && !!source?.content && drawing.sourceId === source.id && drawing.sourceKey === paintMaskSourceKey(source);
@@ -21,7 +21,6 @@ export function resolvePaintMask(node: CanvasNodeData, inputs: ProductionImage[]
 }
 export function remapPaintMaskSources(metadata: CanvasNodeMetadata, ids: Map<string, string>): Partial<CanvasNodeMetadata> {
     return {
-        ...(metadata.paintMaskSourceId ? { paintMaskSourceId: ids.get(metadata.paintMaskSourceId) || metadata.paintMaskSourceId } : {}),
         ...(metadata.paintMask ? { paintMask: { ...metadata.paintMask, sourceId: ids.get(metadata.paintMask.sourceId) || metadata.paintMask.sourceId } } : {}),
     };
 }

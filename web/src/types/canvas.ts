@@ -62,7 +62,6 @@ export type CanvasMediaOutput = {
 
 export type CanvasNodeMetadata = {
     paintMask?: PaintMaskDrawing;
-    paintMaskSourceId?: string;
     maskSettings?: MaskSettings;
     processOutputKey?: string;
     processInputKey?: string;

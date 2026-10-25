@@ -70,6 +70,7 @@ import { buildNodeMentionReferences, getGroupResourceNodes, isCanvasReferenceNod
 import { exportCanvasProjects } from "@/lib/canvas/canvas-export";
 import { applyNodeConfigPatch, audioMetadata, buildAudioGenerationMetadata, buildImageGenerationMetadata, createCanvasNode, imageMetadata, referenceUrl, videoMetadata } from "@/lib/canvas/canvas-node-factory";
 import { applyGroupSelection, applyUngroupSelection, canGroupSelectedNodes, canUngroupSelectedNodes, collectGroupMemberNodes, findContainingGroupId, findGroupDropTarget, focusViewportForNode, getConnectionTargetAnchor, getGroupWrapRect, normalizeConnection, snapNodesIntoGroup, wouldCreateConnectionCycle } from "@/lib/canvas/canvas-node-geometry";
+import { getCanvasInputSocket } from "@/lib/canvas/canvas-sockets";
 import {
     audioExtension,
     buildAngleLabel,
@@ -660,9 +661,10 @@ function InfiniteCanvasPage() {
         (current: ConnectionHandle, targetNodeId: string) => {
             if (current.nodeId === targetNodeId) return;
 
-            const connection = normalizeConnection(current.nodeId, targetNodeId, nodesRef.current, current.handleType);
+            const connection = normalizeConnection(current.nodeId, targetNodeId, nodesRef.current, current.handleType, connectionsRef.current);
             if (!connection) {
-                message.warning(t("canvas.projectPage.configConnection"));
+                const target = nodesRef.current.find(node => node.id === (current.handleType === "source" ? targetNodeId : current.nodeId));
+                message.warning(target && !getCanvasInputSocket(target).multiple ? `${target.title}只接受单张图片输入，请先断开已有连线，并检查输入类型。` : t("canvas.projectPage.configConnection"));
                 return;
             }
             const { fromNodeId, toNodeId } = connection;
@@ -674,7 +676,7 @@ function InfiniteCanvasPage() {
             if (!exists) {
                 const from = nodesRef.current.find((node) => node.id === fromNodeId);
                 const imageInput = from && nodesRef.current.some((node) => node.id === toNodeId && node.type === CanvasNodeType.Config) && isImageInputNode(from);
-                setConnections((prev) => [...prev, { id: nanoid(), fromNodeId, toNodeId, ...(imageInput ? { role: "reference" as const, order: nextImageInputOrder(prev, toNodeId) } : {}) }]);
+                setConnections((prev) => !normalizeConnection(fromNodeId, toNodeId, nodesRef.current, "source", prev) ? prev : [...prev, { id: nanoid(), fromNodeId, toNodeId, ...(imageInput ? { role: "reference" as const, order: nextImageInputOrder(prev, toNodeId) } : {}) }]);
             }
             setContextMenu(null);
         },
@@ -685,7 +687,7 @@ function InfiniteCanvasPage() {
         (type: CanvasNodeType.Image | CanvasNodeType.Text | CanvasNodeType.Config | CanvasNodeType.Video | CanvasNodeType.Audio, pending: PendingConnectionCreate) => {
             const metadata = type === CanvasNodeType.Config ? { model: effectiveConfig.imageModel || effectiveConfig.model, size: effectiveConfig.size, count: getGenerationCount(effectiveConfig.canvasImageCount || effectiveConfig.count) } : undefined;
             const newNode = createCanvasNode(type, pending.position, metadata);
-            const connection = normalizeConnection(pending.connection.nodeId, newNode.id, [...nodesRef.current, newNode], pending.connection.handleType);
+            const connection = normalizeConnection(pending.connection.nodeId, newNode.id, [...nodesRef.current, newNode], pending.connection.handleType, connectionsRef.current);
             if (!connection) {
                 message.warning(t("canvas.projectPage.configConnection"));
                 return;
@@ -730,7 +732,7 @@ function InfiniteCanvasPage() {
 
                     if (!hitsHandle && !hitsInside && !hitsExpanded) return;
                     isNearNode = true;
-                    if (node.id === current.nodeId || !normalizeConnection(current.nodeId, node.id, nodesRef.current, current.handleType)) return;
+                    if (node.id === current.nodeId || !normalizeConnection(current.nodeId, node.id, nodesRef.current, current.handleType, connectionsRef.current)) return;
 
                     const priority = hitsInside ? 0 : hitsHandle ? 1 : 2;
                     if (priority < bestPriority) {
@@ -1088,10 +1090,10 @@ function InfiniteCanvasPage() {
         if (!referencePickerNodeId || referenceConnectedNodeIds.has(fromNodeId)) return;
         const source = nodesRef.current.find((node) => node.id === fromNodeId);
         if (!source || !isCanvasReferenceNode(source, nodesRef.current)) return;
-        const connection = normalizeConnection(fromNodeId, referencePickerNodeId, nodesRef.current, "source");
+        const connection = normalizeConnection(fromNodeId, referencePickerNodeId, nodesRef.current, "source", connectionsRef.current);
         if (!connection || connection.fromNodeId !== fromNodeId || connection.toNodeId !== referencePickerNodeId) return;
         const imageInput = nodesRef.current.some((node) => node.id === referencePickerNodeId && node.type === CanvasNodeType.Config) && isImageInputNode(source);
-        setConnections((prev) => prev.some((edge) => edge.fromNodeId === fromNodeId && edge.toNodeId === referencePickerNodeId) || wouldCreateConnectionCycle(fromNodeId, referencePickerNodeId, prev)
+        setConnections((prev) => !normalizeConnection(fromNodeId, referencePickerNodeId, nodesRef.current, "source", prev) || prev.some((edge) => edge.fromNodeId === fromNodeId && edge.toNodeId === referencePickerNodeId) || wouldCreateConnectionCycle(fromNodeId, referencePickerNodeId, prev)
             ? prev
             : [...prev, { id: nanoid(), ...connection, ...(imageInput ? { role: "reference" as const, order: nextImageInputOrder(prev, referencePickerNodeId) } : {}) }]);
     }, [referenceConnectedNodeIds, referencePickerNodeId]);

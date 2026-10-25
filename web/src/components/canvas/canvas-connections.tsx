@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 
 import { CanvasPanel, useCanvasPanel } from "./canvas-panel";
 import { canvasThemes } from "@/lib/canvas-theme";
+import { canvasSocketLabels, getCanvasOutputType, getCanvasPreviewType, getCanvasSocketColor } from "@/lib/canvas/canvas-sockets";
 import { CANVAS_INPUT_ROLES, canvasInputRoleLabel, isImageInputNode } from "@/lib/canvas/canvas-input-role";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData, type ConnectionHandle, type Position } from "@/types/canvas";
@@ -134,7 +135,7 @@ export function ConnectionPath({
     onDisconnect: () => void;
     onContextMenu?: (event: ReactMouseEvent<SVGPathElement>) => void;
 }) {
-    const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const gradientId = useId();
     const startX = from.position.x + from.width;
     const startY = from.position.y + from.height / 2;
     const endX = to.position.x;
@@ -142,9 +143,11 @@ export function ConnectionPath({
     const dx = Math.abs(endX - startX);
     const curvature = Math.max(dx * 0.5, 50);
     const pathD = `M ${startX} ${startY} C ${startX + curvature} ${startY}, ${endX - curvature} ${endY}, ${endX} ${endY}`;
+    const dataType = getCanvasOutputType(from);
 
     return (
         <g>
+            <defs><ConnectionGradient id={gradientId} from={from} to={to} start={{ x: startX, y: startY }} end={{ x: endX, y: endY }} /></defs>
             <path
                 data-connection-id={connection.id}
                 d={pathD}
@@ -166,22 +169,23 @@ export function ConnectionPath({
                     event.stopPropagation();
                     onContextMenu?.(event);
                 }}
-            ><title>{unavailableReason ? `暂不可用：${unavailableReason}；切回可用模式后自动恢复` : "画布连线"}</title></path>
+            ><title>{unavailableReason ? `暂不可用：${unavailableReason}；切回可用模式后自动恢复` : `${canvasSocketLabels[dataType]}连线`}</title></path>
             <path
+                data-connection-type={dataType}
                 d={pathD}
-                stroke={unavailableReason ? theme.node.muted : active ? theme.node.activeStroke : theme.node.muted}
+                stroke={`url(#${gradientId})`}
                 strokeWidth={active ? 3 : 2}
                 strokeOpacity={unavailableReason ? 0.35 : active ? 1 : 0.82}
                 strokeDasharray={unavailableReason ? "6 5" : undefined}
                 fill="none"
-                style={{ filter: active && !unavailableReason ? `drop-shadow(0 0 8px ${theme.node.activeStroke}66)` : undefined, pointerEvents: "none" }}
+                style={{ pointerEvents: "none" }}
             />
         </g>
     );
 }
 
 export function ActiveConnectionPath({ node, handle, mouseWorld, target }: { node?: CanvasNodeData; handle: ConnectionHandle; mouseWorld: Position; target?: CanvasNodeData }) {
-    const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const gradientId = useId();
     if (!node) return null;
 
     const startX = handle.handleType === "source" ? node.position.x + node.width : mouseWorld.x;
@@ -195,5 +199,19 @@ export function ActiveConnectionPath({ node, handle, mouseWorld, target }: { nod
     const distance = Math.abs(snappedEndX - snappedStartX);
     const pathD = `M ${snappedStartX} ${snappedStartY} C ${snappedStartX + distance * 0.5} ${snappedStartY}, ${snappedEndX - distance * 0.5} ${snappedEndY}, ${snappedEndX} ${snappedEndY}`;
 
-    return <path d={pathD} stroke={theme.node.activeStroke} strokeWidth="2" fill="none" strokeDasharray="5,5" />;
+    const dataType = getCanvasPreviewType(node, handle.handleType, target);
+    return <g>
+        <defs><ConnectionGradient id={gradientId} from={handle.handleType === "source" ? node : target} to={handle.handleType === "source" ? target : node} start={{ x: snappedStartX, y: snappedStartY }} end={{ x: snappedEndX, y: snappedEndY }} /></defs>
+        <path data-connection-preview={dataType} d={pathD} stroke={`url(#${gradientId})`} strokeWidth="2" fill="none" strokeDasharray="5,5" style={{ pointerEvents: "none" }} />
+    </g>;
+}
+
+function ConnectionGradient({ id, from, to, start, end }: { id: string; from?: CanvasNodeData; to?: CanvasNodeData; start: Position; end: Position }) {
+    const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const sourceColor = from ? getCanvasSocketColor(from, "source", theme) : getCanvasSocketColor(to!, "target", theme);
+    const targetColor = to ? getCanvasSocketColor(to, "target", theme) : sourceColor;
+    return <linearGradient id={id} gradientUnits="userSpaceOnUse" x1={start.x} y1={start.y} x2={start.x === end.x && start.y === end.y ? end.x + 1 : end.x} y2={end.y} colorInterpolation="sRGB">
+        <stop offset="0%" style={{ stopColor: sourceColor }} />
+        <stop offset="100%" style={{ stopColor: targetColor }} />
+    </linearGradient>;
 }

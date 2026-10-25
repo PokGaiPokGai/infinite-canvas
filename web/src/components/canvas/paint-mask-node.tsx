@@ -1,12 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Eye, Pencil, X } from "lucide-react";
 import { registerNodeDefinitions } from "@/lib/canvas/node-registry";
-import { getPaintMaskSource, MASK_PAINT, paintMaskMatches, paintMaskPng, paintMaskSourceKey } from "@/lib/canvas/paint-mask";
+import { DEFAULT_MASK_PREVIEW_COLOR, getPaintMaskSource, MASK_PAINT, paintMaskMatches, paintMaskPng, paintMaskSourceKey } from "@/lib/canvas/paint-mask";
 import { imageMetadata } from "@/lib/canvas/canvas-node-factory";
 import { deleteStoredImages, uploadImage } from "@/services/image-storage";
 import { getSharedStorageStatus } from "@/lib/shared-storage";
 import { PaintMaskEditor, PaintMaskStrokes } from "./paint-mask-editor";
-import { processButton, processField } from "./processing-panel";
+import { processButton } from "./processing-panel";
 import type { CanvasNodeContext } from "@/types/canvas-plugin";
 import type { PaintMaskDrawing } from "@/types/paint-mask";
 
@@ -48,6 +48,14 @@ function PaintMaskContent({ ctx }: { ctx: CanvasNodeContext }) {
         if (request.current) return;
         const storage = getSharedStorageStatus();
         if (storage.remoteChanged || storage.error) { setError(storage.error || "其他窗口已更新画布，请先重新载入。"); return; }
+        const ctx = latest.current.ctx;
+        if (!paintMaskMatches(next, getPaintMaskSource(ctx.node))) { setError("原图或连线已变化，请取消后重新绘制。"); return; }
+        const previous = ctx.node.metadata?.paintMask;
+        if (previous?.output?.storageKey && paintMaskMatches(previous, getPaintMaskSource(ctx.node)) && JSON.stringify(previous.strokes) === JSON.stringify(next.strokes)) {
+            ctx.updateMetadata({ paintMask: { ...structuredClone(next), output: previous.output } });
+            setDraft(null);
+            return;
+        }
         const controller = new AbortController();
         request.current = controller; setSaving(true); setError("");
         let orphan: string | undefined;
@@ -60,7 +68,7 @@ function PaintMaskContent({ ctx }: { ctx: CanvasNodeContext }) {
             const status = getSharedStorageStatus();
             if (status.remoteChanged || status.error) throw new Error(status.error || "其他窗口已更新画布，请先重新载入。");
             const output = { content: image.url, storageKey: image.storageKey, naturalWidth: image.width, naturalHeight: image.height, mimeType: image.mimeType, bytes: image.bytes };
-            current.updateMetadata({ ...imageMetadata(image), outputKind: "image", paintMask: { ...structuredClone(next), output }, paintMaskSourceId: next.sourceId, errorDetails: undefined });
+            current.updateMetadata({ ...imageMetadata(image), outputKind: "image", paintMask: { ...structuredClone(next), output }, errorDetails: undefined });
             orphan = undefined;
             setDraft(null);
         } catch (reason) {
@@ -80,7 +88,7 @@ function PaintMaskContent({ ctx }: { ctx: CanvasNodeContext }) {
                 const height = ctx.node.width * image.naturalHeight / image.naturalWidth;
                 if (Math.abs(ctx.node.height - height) > 1) ctx.updateNode({ height });
             }} />
-            {!showingMask && drawing ? <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox={`0 0 ${drawing.width} ${drawing.height}`} aria-hidden="true"><PaintMaskStrokes strokes={drawing.strokes} color="white" /></svg> : null}
+            {!showingMask && drawing ? <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox={`0 0 ${drawing.width} ${drawing.height}`} aria-hidden="true"><PaintMaskStrokes strokes={drawing.strokes} color={drawing.previewColor ?? DEFAULT_MASK_PREVIEW_COLOR} /></svg> : null}
         </> : <div className="flex h-full flex-col items-center justify-center gap-3 p-5 text-center text-xs" style={{ color: ctx.theme.node.muted }}><Pencil size={24} /><span>连接图片后绘制蒙版</span></div>}
         {draft ? <PaintMaskEditor initial={draft} image={source?.content || ""} theme={ctx.theme} hostRef={hostRef} saving={saving} error={error || (!paintMaskMatches(draft, source) ? "原图已变化，请取消后重新开始。" : "")} onCancel={cancel} onSave={next => void save(next)} /> : null}
     </div>;
@@ -92,12 +100,11 @@ function PaintMaskPanel({ ctx, onClose }: { ctx: CanvasNodeContext; onClose: () 
     const valid = paintMaskMatches(ctx.node.metadata?.paintMask, source);
     return <div className="mx-auto max-w-[440px] space-y-3 rounded-2xl border p-3" style={{ background: ctx.theme.node.panel, color: ctx.theme.node.text, borderColor: ctx.theme.node.stroke }}>
         <header className="flex items-center justify-between"><strong className="text-xs">手绘蒙版</strong><button className={processButton} aria-label="关闭蒙版设置" onClick={onClose}><X size={14} /></button></header>
-        <label className="flex items-center gap-3 text-xs"><span className="shrink-0 whitespace-nowrap">原图</span><select className={processField} aria-label="蒙版原图" style={{ borderColor: ctx.theme.node.stroke }} value={source?.id || ""} onChange={event => ctx.updateMetadata({ paintMaskSourceId: event.target.value })}><option value="" disabled hidden>选择已连接图片</option>{inputs.map(input => <option key={input.id} value={input.id}>{input.title}{!input.content ? "（未就绪）" : ""}</option>)}</select></label>
         <div className="flex items-center gap-2">
             <button className={processButton} disabled={!source?.content} onClick={() => ctx.emit(editEvent, eventFor(ctx))}><Pencil size={18} />绘制蒙版</button>
             <button className={processButton} disabled={!valid || !ctx.node.metadata?.content} onClick={() => ctx.emit(previewEvent, eventFor(ctx))}><Eye size={16} />切换黑白预览</button>
         </div>
-        <p className="text-[11px] leading-5" style={{ color: ctx.theme.node.muted }}>{ctx.node.metadata?.paintMask && !valid ? "原图已变化，旧蒙版暂停输出，请重新绘制。" : "白色为选区，黑色为未选区域。输出独立 PNG，可连接羽化、扩缩或合成 Alpha。双击图片也可绘制。"}</p>
+        <p className="text-[11px] leading-5" style={{ color: ctx.theme.node.muted }}>{inputs.length > 1 ? "只接受一张原图，请先移除多余输入连线。" : ctx.node.metadata?.paintMask && !valid ? "原图已变化，旧蒙版暂停输出，请重新绘制。" : "只接受一张原图。白色为选区，黑色为未选区域。输出独立 PNG，可连接羽化、扩缩或合成 Alpha。双击图片也可绘制。"}</p>
         {ctx.node.metadata?.errorDetails ? <p role="alert" className="text-xs">{ctx.node.metadata.errorDetails}</p> : null}
     </div>;
 }
