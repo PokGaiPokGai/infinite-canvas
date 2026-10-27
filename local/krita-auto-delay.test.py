@@ -103,5 +103,22 @@ class WatchTiming(unittest.TestCase):
         self.assertEqual(error.exception.status, 503)
 
 
+class ActiveDocumentStatus(unittest.TestCase):
+    def test_reports_focused_document_instead_of_first_and_handles_no_focus(self):
+        root = types.SimpleNamespace(childNodes=lambda: [], locked=lambda: False)
+        def document(name):
+            return types.SimpleNamespace(fileName=lambda: "", name=lambda: name, width=lambda: 640, height=lambda: 480,
+                                         colorModel=lambda: "RGBA", colorDepth=lambda: "U8", colorProfile=lambda: "sRGB", rootNode=lambda: root)
+        first, focused = document("first"), document("focused")
+        service = object.__new__(bridge.BridgeService)
+        service.session_id, service._revision = "session", 0
+        service._lock = ClockCondition()
+        service._live_documents = lambda: {"first-id": first, "focused-id": focused}
+        with patch.object(bridge.Krita, "instance", lambda: types.SimpleNamespace(activeDocument=lambda: focused)):
+            self.assertEqual(service._status()["activeDocumentId"], "focused-id")
+        with patch.object(bridge.Krita, "instance", lambda: types.SimpleNamespace(activeDocument=lambda: None)):
+            self.assertIsNone(service._status()["activeDocumentId"])
+
+
 if __name__ == "__main__":
     unittest.main()

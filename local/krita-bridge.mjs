@@ -646,7 +646,9 @@ export function createKritaBridge({ appRoot = resolve(dirname(fileURLToPath(impo
                                 return { id: layerIdOf(layer.id), name: layer.name, type: layer.type };
                             }) };
                     });
+                    if (value.activeDocumentId != null && !documents.some((doc) => doc.id === value.activeDocumentId)) throw new LinkError(502, 'Krita 当前活动文档信息无效。');
                     json(response, 200, { connected: true, version: 1, sessionId: value.sessionId,
+                        ...(value.activeDocumentId === undefined ? {} : { activeDocumentId: value.activeDocumentId }),
                         ...(value.activityRevision === undefined ? {} : { activityRevision: value.activityRevision }), ...(value.autoReadDelayVersion === 1 ? { autoReadDelayVersion: 1 } : {}), documents });
                 } catch (error) { json(response, 200, { connected: false, documents: [], error: error.message }); }
                 return true;

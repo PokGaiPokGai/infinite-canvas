@@ -89,13 +89,13 @@ async function frontend(production) {
         spawn('explorer.exe', [`http://127.0.0.1:${port}/canvas`], { windowsHide: true, stdio: 'ignore' }).unref();
     }
 }
-async function stop(source, mode) {
+async function stop(source, mode, exitApp = false) {
     const file = join(source, '.local', `runtime-${mode}.json`);
     if (!existsSync(file)) { console.log(`${mode}: 没有新版入口的运行记录，未操作旧服务。`); return; }
     const owner = json(file), current = await identity(owner.port);
     if (!current) { console.log(`${mode}: 未找到匹配的运行实例。`); return; }
     if (current.pid !== owner.pid || current.startedAt !== owner.startedAt || current.mode !== mode || normalized(current.root) !== normalized(source)) throw new Error('服务身份与记录不符，拒绝停止。');
-    const response = await fetch(`http://127.0.0.1:${owner.port}/__canvas/stop`, { method: 'POST', headers: { 'X-Canvas-Owner': owner.token } });
+    const response = await fetch(`http://127.0.0.1:${owner.port}/__canvas/stop`, { method: 'POST', headers: { 'X-Canvas-Owner': owner.token, ...(exitApp ? { 'X-Canvas-Exit-App': '1' } : {}) } });
     if (!response.ok) throw new Error((await response.json()).error);
     console.log(`${mode}: 已请求停止本入口服务。`);
 }
@@ -140,7 +140,11 @@ try {
     } else if (command === 'start') await frontend(false);
     else if (command === 'serve') await frontend(true);
     else if (command === 'bridge') await bridge();
-    else if (command === 'stop') {
+    else if (command === 'exit-app') {
+        if (normalized(root) !== normalized(main)) throw new Error('应用退出只能由主检出调用。');
+        await stop(main, 'bridge', true);
+        await stop(root, 'production');
+    } else if (command === 'stop') {
         if (args.includes('--legacy')) { await stopLegacy(args.includes('--bridge')); }
         await stop(root, 'development');
         if (normalized(root) === normalized(main)) await stop(root, 'production');

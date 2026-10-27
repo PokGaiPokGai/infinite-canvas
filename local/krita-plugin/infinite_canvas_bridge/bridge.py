@@ -206,7 +206,11 @@ class BridgeService(QObject):
 
     def _status(self):
         documents = []
+        active_document = Krita.instance().activeDocument()
+        active_document_id = None
         for document_id, doc in self._live_documents().items():
+            if doc == active_document:
+                active_document_id = document_id
             layers = []
             model, depth, profile = _color(doc)
 
@@ -223,7 +227,7 @@ class BridgeService(QObject):
                               "colorModel": model, "colorDepth": depth, "colorProfile": profile, "layers": layers})
         with self._lock:
             revision = self._revision
-        return {"version": 1, "sessionId": self.session_id, "activityRevision": revision, "autoReadDelayVersion": 1, "documents": documents}
+        return {"version": 1, "sessionId": self.session_id, "activityRevision": revision, "autoReadDelayVersion": 1, "activeDocumentId": active_document_id, "documents": documents}
 
     def _snapshot(self, payload):
         document_id = _uuid(payload.get("documentId"), "documentId")

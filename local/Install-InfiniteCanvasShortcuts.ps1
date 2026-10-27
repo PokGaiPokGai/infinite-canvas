@@ -1,12 +1,12 @@
-param([switch]$Desktop, [switch]$StartMenu)
+﻿param([switch]$Desktop, [switch]$StartMenu)
 $ErrorActionPreference = 'Stop'
 $appRoot = Split-Path -Parent $PSScriptRoot
 $launcher = Join-Path $PSScriptRoot 'Launch-InfiniteCanvasApp.vbs'
-$icon = Join-Path $PSScriptRoot 'infinite-canvas.ico'
+$icon = Join-Path $PSScriptRoot 'infinite-canvas-app.ico'
 $wscript = Join-Path $env:SystemRoot 'System32\wscript.exe'
 $shortcutArguments = '"' + $launcher + '"'
 if (-not (Test-Path -LiteralPath $launcher -PathType Leaf)) { throw 'Missing local/Launch-InfiniteCanvasApp.vbs.' }
-if (-not (Test-Path -LiteralPath $icon -PathType Leaf)) { throw 'Missing local/infinite-canvas.ico.' }
+if (-not (Test-Path -LiteralPath $icon -PathType Leaf)) { throw 'Missing local/infinite-canvas-app.ico.' }
 if (-not $Desktop -and -not $StartMenu) { $Desktop = $true; $StartMenu = $true }
 $shell = New-Object -ComObject WScript.Shell
 $targets = @()
@@ -23,13 +23,12 @@ foreach ($target in $targets) {
     }
 }
 foreach ($target in $targets) {
-    if (Test-Path -LiteralPath $target) { Write-Output "Shortcut already exists and was left unchanged: $target"; continue }
     $shortcut = $shell.CreateShortcut($target)
     $shortcut.TargetPath = $wscript
     $shortcut.Arguments = $shortcutArguments
     $shortcut.WorkingDirectory = $appRoot
     $shortcut.IconLocation = "$icon,0"
-    $shortcut.Description = 'Infinite Canvas - open in default browser'
+    $shortcut.Description = 'Infinite Canvas - application window'
     $shortcut.WindowStyle = 1
     $shortcut.Save()
     Write-Output "Shortcut created: $target"

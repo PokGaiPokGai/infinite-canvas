@@ -12,6 +12,8 @@ import { homedir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runtimeEndpoint } from './runtime-core.mjs';
+import { appTaskLifecycle } from './app-task-lifecycle.mjs';
+const appTasks = appTaskLifecycle();
 
 const appRoot = process.env.INFINITE_CANVAS_APP_ROOT ? resolve(process.env.INFINITE_CANVAS_APP_ROOT) : resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const jobsRoot = join(appRoot, '.local', 'codex-image', 'jobs');
@@ -28,6 +30,7 @@ const allowedOrigins = new Set(['http://127.0.0.1:3000']);
 const allowedHosts = new Set(['127.0.0.1:3000', '127.0.0.1:3002']);
 const runtime = runtimeEndpoint({ root: resolve(dirname(fileURLToPath(import.meta.url)), '..'), port: 3002, dataRoot: appRoot, mode: 'bridge',
     active: () => active.size + activeText.size + sharedStorage.activeExecutions,
+    exitApp: () => appTasks.exit(),
     stop: () => { server.close(() => process.exit(0)); server.closeAllConnections(); },
 });
 await access(cliJs);
@@ -125,7 +128,8 @@ async function generateOne(job, index, references) {
         if (/^(OPENAI|AZURE_OPENAI)_(API_KEY|BASE_URL|API_BASE|ENDPOINT|ORG_ID|ORGANIZATION|PROJECT_ID)$/.test(key) || key === 'CODEX_API_KEY') delete env[key];
     }
     const startedAt = Date.now();
-    const child = spawn(process.execPath, args, { cwd: work, env, shell: false, windowsHide: true, stdio: ['pipe','pipe','pipe'] });
+    if (appTasks.exiting) throw new Error('应用已退出，任务取消。');
+    const child = appTasks.trackChild(spawn(process.execPath, args, { cwd: work, env, shell: false, windowsHide: true, stdio: ['pipe','pipe','pipe'] }));
     let pending = '', events = '', stderr = '', threadId, completed = false, invalidEvents = false;
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');
@@ -187,7 +191,7 @@ async function run(job, images) {
         job.status = 'succeeded';
     } catch (error) {
         job.status = 'failed';
-        job.error = error.code === 'ENOENT' ? 'Codex 未返回可读取的生成图片，请检查本机任务日志。' : error.message;
+        job.error = appTasks.exiting ? '用户退出无限画布，任务已中止。' : error.code === 'ENOENT' ? 'Codex 未返回可读取的生成图片，请检查本机任务日志。' : error.message;
         // No automatic retry: a failed transfer must not cause a second paid generation.
     } finally {
         job.finishedAt = new Date().toISOString();
@@ -257,7 +261,8 @@ async function runTextJob(job) {
         for (const key of Object.keys(env)) {
             if (/^(OPENAI|AZURE_OPENAI)_(API_KEY|BASE_URL|API_BASE|ENDPOINT|ORG_ID|ORGANIZATION|PROJECT_ID)$/.test(key) || key === 'CODEX_API_KEY') delete env[key];
         }
-        const child = spawn(process.execPath, args, { cwd: work, env, shell: false, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+        if (appTasks.exiting) throw new Error('应用已退出，任务取消。');
+        const child = appTasks.trackChild(spawn(process.execPath, args, { cwd: work, env, shell: false, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] }));
         let pending = '', events = '', stderr = '', completed = false, invalidEvents = false, answer = '';
         child.stdout.setEncoding('utf8');
         child.stderr.setEncoding('utf8');
@@ -298,7 +303,7 @@ async function runTextJob(job) {
         job.status = 'succeeded';
     } catch (error) {
         job.status = 'failed';
-        job.error = error.message;
+        job.error = appTasks.exiting ? '用户退出无限画布，任务已中止。' : error.message;
     } finally {
         job.finishedAt = new Date().toISOString();
         try { await saveTextJob(job); } finally { activeText.delete(job.id); }
@@ -341,6 +346,7 @@ const server = createServer(async (request, response) => {
     try {
         if (request.url?.split('?')[0].startsWith('/__canvas')) { runtime(request, response, () => json(response, 404, { error: '未知运行接口。' })); return; }
         if (!allowedHosts.has(request.headers.host)) return json(response, 403, { error: '仅允许本机画布访问。' });
+        if (appTasks.exiting) return json(response, 503, { error: '无限画布正在退出。' });
         const origin = request.headers.origin;
         const site = request.headers['sec-fetch-site'];
         const directNavigation = request.method === 'GET' && site === 'none' && request.headers['sec-fetch-mode'] === 'navigate';
@@ -379,7 +385,7 @@ const server = createServer(async (request, response) => {
             await saveTextJob(job);
             activeText.set(job.id, job);
             json(response, 202, textJobView(job));
-            void runTextJob(job).catch((error) => console.error('Text task persistence failed:', error.code || 'unknown'));
+            void appTasks.trackTask(runTextJob(job)).catch((error) => console.error('Text task persistence failed:', error.code || 'unknown'));
             return;
         }
         const textMatch = /^\/text\/jobs\/([^/]+)$/.exec(path);
@@ -409,7 +415,7 @@ const server = createServer(async (request, response) => {
             await save(job);
             active.set(job.id, job);
             json(response, 202, publicJob(job));
-            void run(job, data.images || []).catch((error) => console.error('Task persistence failed:', error.code || 'unknown'));
+            void appTasks.trackTask(run(job, data.images || [])).catch((error) => console.error('Task persistence failed:', error.code || 'unknown'));
             return;
         }
         const match = /^\/jobs\/([^/]+)(?:\/images\/(\d+)\.png)?$/.exec(path);

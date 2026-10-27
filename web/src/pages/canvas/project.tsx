@@ -3621,8 +3621,14 @@ function InfiniteCanvasPage() {
                     onDelete={() => deleteNodes(new Set(selectedNodeIds))}
                     onClear={() => setClearConfirmOpen(true)}
                     onCanvasToolChange={setCanvasTool}
-                    onBackgroundModeChange={setBackgroundMode}
-                    onShowImageInfoChange={setShowImageInfo}
+                    onBackgroundModeChange={(mode) => {
+                        setBackgroundMode(mode);
+                        useConfigStore.getState().updateConfig("canvasBackgroundMode", mode);
+                    }}
+                    onShowImageInfoChange={(visible) => {
+                        setShowImageInfo(visible);
+                        useConfigStore.getState().updateConfig("canvasShowImageInfo", visible);
+                    }}
                 />
 
 

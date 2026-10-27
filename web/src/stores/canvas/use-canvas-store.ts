@@ -3,6 +3,7 @@ import { persist, type PersistStorage, type StorageValue } from "zustand/middlew
 
 import { nanoid } from "nanoid";
 import i18n from "@/i18n";
+import { useConfigStore } from "@/stores/use-config-store";
 import { localForageStorage } from "@/lib/localforage-storage";
 import { deferSharedWrite, isSharedStorageEnabled } from "@/lib/shared-storage";
 import type { CanvasBackgroundMode } from "@/lib/canvas-theme";
@@ -90,8 +91,8 @@ export const useCanvasStore = create<CanvasStore>()(
                     connections: [],
                     chatSessions: [],
                     activeChatId: null,
-                    backgroundMode: "lines",
-                    showImageInfo: false,
+                    backgroundMode: useConfigStore.getState().config.canvasBackgroundMode,
+                    showImageInfo: useConfigStore.getState().config.canvasShowImageInfo,
                     viewport: initialViewport,
                 };
                 set((state) => ({ projects: [project, ...state.projects] }));

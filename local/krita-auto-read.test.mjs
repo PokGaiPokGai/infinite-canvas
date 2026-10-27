@@ -60,6 +60,18 @@ async function claim(bridge, clientId, leader) {
     return result.value;
 }
 
+test('status preserves active document identity and rejects an unknown active document', async t => {
+    const id = randomUUID();
+    let activeDocumentId = id;
+    const { bridge } = await setup(t, async () => Response.json({ version: 1, sessionId: randomUUID(), activeDocumentId,
+        documents: [{ id, name: 'Focused', width: 640, height: 480, colorModel: 'RGBA', colorDepth: 'U8', colorProfile: 'sRGB', layers: [] }] }));
+    assert.equal((await call(bridge, '/krita/status')).value.activeDocumentId, id);
+    activeDocumentId = null;
+    assert.equal((await call(bridge, '/krita/status')).value.activeDocumentId, null);
+    activeDocumentId = randomUUID();
+    assert.equal((await call(bridge, '/krita/status')).value.connected, false);
+});
+
 test('unchanged Auto snapshot returns a hash check without saving another PNG', async (t) => {
     const documentId = randomUUID(), layerId = randomUUID(), sessionId = randomUUID();
     const pixelSha256 = sha256(Buffer.from('same pixels'));

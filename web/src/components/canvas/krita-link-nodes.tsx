@@ -194,6 +194,30 @@ function fitLinkToPreview(ctx: CanvasNodeContext, imageWidth: number, imageHeigh
 
 function LinkContent({ ctx }: { ctx: CanvasNodeContext }) {
     const link: KritaLinkMetadata = ctx.node.metadata?.krita?.kind === "link" ? ctx.node.metadata.krita : { kind: "link", mode: "read" };
+    useEffect(() => {
+        if (!link.initializeFromActiveDocument) return;
+        const controller = new AbortController();
+        const currentUnbound = () => {
+            const current = ctx.getNode(ctx.node.id)?.metadata?.krita;
+            return current?.kind === "link" && current.initializeFromActiveDocument && current.mode === "read" && !current.documentId ? current : null;
+        };
+        void getKritaStatus(controller.signal).then(async (status) => {
+            if (controller.signal.aborted) return;
+            const current = currentUnbound();
+            if (!current) return;
+            const document = status.connected ? status.documents.find((item) => item.id === status.activeDocumentId) : undefined;
+            ctx.updateMetadata({ krita: { ...current, initializeFromActiveDocument: false, documentId: document?.id, layerId: undefined },
+                errorDetails: status.connected && status.activeDocumentId === undefined ? "请更新并重启 Krita 桥接插件后使用自动绑定；也可在面板手动选择文档。" : undefined });
+            if (document) await refreshKritaRead(ctx, document.id);
+        }).catch((error) => {
+            if (controller.signal.aborted) return;
+            const current = currentUnbound();
+            if (current) ctx.updateMetadata({ krita: { ...current, initializeFromActiveDocument: false }, errorDetails: `自动绑定未完成：${textOf(error)}` });
+        });
+        return () => controller.abort();
+        // Creation-only: never follow focus changes or rebind restored/manual nodes.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [ctx.node.id]);
     const [busy, setBusy] = useState(false);
     const reading = useKritaReading(ctx);
     const inputs = link.mode === "write" ? writeInputs(ctx) : null;
@@ -526,7 +550,7 @@ export function registerLocalKritaNodes() {
     if (registered) return;
     registered = true;
     registerNodeDefinitions([
-        { type: KRITA_LINK, category: "tools", title: "Krita Link", icon: <img src="/icons/krita.png" alt="" className="size-4" />, description: "在节点上切换读取或新图写回 Krita", defaultSize: { width: 360, height: 360 }, defaultMetadata: { krita: { kind: "link", mode: "read", writeTargetMode: "new", newLayerPolicy: "reuse" } }, hasSourceHandle: (node) => node.metadata?.krita?.kind === "link", hasTargetHandle: (node) => node.metadata?.krita?.kind === "link" && node.metadata.krita.mode === "write", keepAspectRatio: () => true, Content: LinkContent, Panel: LinkPanel, resource: (node) => node.metadata?.krita?.kind === "link" && node.metadata.content && (node.metadata.krita.mode === "read" || hasKritaWriteOutput(node)) ? { kind: "image", url: node.metadata.content } : null },
+        { type: KRITA_LINK, category: "tools", title: "Krita Link", icon: <img src="/icons/krita.png" alt="" className="size-4" />, description: "在节点上切换读取或新图写回 Krita", defaultSize: { width: 360, height: 360 }, defaultMetadata: { krita: { kind: "link", mode: "read", initializeFromActiveDocument: true, writeTargetMode: "new", newLayerPolicy: "reuse" } }, hasSourceHandle: (node) => node.metadata?.krita?.kind === "link", hasTargetHandle: (node) => node.metadata?.krita?.kind === "link" && node.metadata.krita.mode === "write", keepAspectRatio: () => true, Content: LinkContent, Panel: LinkPanel, resource: (node) => node.metadata?.krita?.kind === "link" && node.metadata.content && (node.metadata.krita.mode === "read" || hasKritaWriteOutput(node)) ? { kind: "image", url: node.metadata.content } : null },
         { type: KRITA_SOURCE, title: "Krita 输入", icon: <Brush className="size-4" />, description: "旧画布中的 Krita 读取节点", showInCreateMenu: false, defaultSize: { width: 320, height: 250 }, defaultMetadata: { krita: { kind: "source" } }, autoOpenPanel: true, panelPlacement: "right", keepAspectRatio: () => true, Content: SourceContent, Panel: SourcePanel, resource: (node) => node.metadata?.content ? { kind: "image", url: node.metadata.content } : null },
         { type: KRITA_PRESET, title: "Krita 预设生成", icon: <Settings2 className="size-4" />, description: "旧画布中的 Krita 预设", showInCreateMenu: false, defaultSize: { width: 300, height: 210 }, defaultMetadata: { prompt: "", krita: { kind: "preset", presetId: "draft" } }, autoOpenPanel: true, panelPlacement: "right", Content: PresetContent, Panel: PresetPanel },
     ], "local-krita-link");

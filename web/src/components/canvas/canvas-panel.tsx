@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type HTMLAttributes, type RefObject, type SetStateAction } from "react";
 
 // Third-party dropdown portals do not participate in our React panel context.
-const attachedPopupSelector = ".ant-select-dropdown,.ant-dropdown,.ant-popover,.ant-picker-dropdown,[data-canvas-resource-mention-menu]";
+const attachedPopupSelector = ".ant-select-dropdown,.ant-dropdown,.ant-popover,.ant-picker-dropdown,[data-slot=select-content],[data-canvas-resource-mention-menu]";
 const PanelAncestors = createContext<Set<HTMLElement>[]>([]);
 type ActivationEvent = { detail: number };
 

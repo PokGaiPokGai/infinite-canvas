@@ -68,7 +68,7 @@ export function within(root, candidate) {
 }
 
 // The nonce stays in the ignored owner file/environment. It is never returned by identity endpoints.
-export function runtimeEndpoint({ root, port, dataRoot, mode, build, stop, active = () => 0, token = process.env.INFINITE_CANVAS_OWNER_TOKEN }) {
+export function runtimeEndpoint({ root, port, dataRoot, mode, build, stop, exitApp, active = () => 0, token = process.env.INFINITE_CANVAS_OWNER_TOKEN }) {
     const started = checkout(root);
     const backendFingerprint = mode === 'bridge' ? sourceFingerprint(root, ['local']) : null;
     const startedAt = new Date(performance.timeOrigin).toISOString();
@@ -81,6 +81,13 @@ export function runtimeEndpoint({ root, port, dataRoot, mode, build, stop, activ
         if (!allowed) return send(403, { error: '仅允许本机当前入口访问。' });
         if (path === '/__canvas/stop') {
             if (request.method !== 'POST' || !token || request.headers['x-canvas-owner'] !== token) return send(403, { error: '运行实例所有权不匹配，未停止任何进程。' });
+            if (request.headers['x-canvas-exit-app'] === '1' && exitApp) {
+                void Promise.resolve().then(exitApp).then(() => {
+                    response.once('finish', stop);
+                    send(200, { stopped: true });
+                }).catch(() => send(500, { error: '退出任务失败，后台保留运行，请检查本机日志。' }));
+                return;
+            }
             if (active()) return send(409, { error: '共享后台仍有活动任务，保留运行。' });
             response.once('finish', stop);
             send(200, { stopped: true });

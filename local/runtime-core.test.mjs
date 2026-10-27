@@ -72,3 +72,19 @@ test('identity never exposes the owner nonce; shutdown rejects foreign origins, 
     assert.equal(call('/__canvas/stop', { 'x-canvas-owner': 'owned-secret' }, 'POST').status, 200);
     assert.equal(stopped, 1);
 });
+
+test('explicit app exit requires ownership and finishes cancellation before stopping', async () => {
+    const order = [];
+    const handler = runtimeEndpoint({ root: process.cwd(), dataRoot: process.cwd(), port: 3080, mode: 'bridge', token: 'owner', active: () => 1,
+        exitApp: async () => { await Promise.resolve(); order.push('cancelled'); }, stop: () => order.push('stopped') });
+    const call = (token) => new Promise(resolve => {
+        const response = new EventEmitter();
+        response.writeHead = status => { response.status = status; };
+        response.end = () => { response.emit('finish'); resolve(response.status); };
+        handler({ url: '/__canvas/stop', method: 'POST', headers: { host: '127.0.0.1:3080', 'x-canvas-owner': token, 'x-canvas-exit-app': '1' } }, response, () => assert.fail());
+    });
+    assert.equal(await call('foreign'), 403);
+    assert.deepEqual(order, []);
+    assert.equal(await call('owner'), 200);
+    assert.deepEqual(order, ['cancelled', 'stopped']);
+});

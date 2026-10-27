@@ -242,3 +242,5 @@ The Chinese version contains the complete item-by-item acceptance checklist.
 - 分辨率为自动时保留比例选择，比例为自动时禁用 W/H；手动输入 W/H 后，对齐开关仍应按原有方式工作。
 - Gemini 请求应带 aspectRatio（所选比例）；分辨率选了 1K / 2K / 4K 时应按尺寸表带上 imageConfig.imageSize，选自动时不带。质量不参与分辨率换算，视频尺寸设置保持原有行为。
 - 图像质量可选自动与 5 档（低 / 中 / 高 / 极高 / 最高），请求里的 quality 字段应与所选档位一致，且尺寸不随质量变化。
+
+- 2026-10-28: Dedicated app window shutdown verified with an isolated browser profile: ports 3000 and 3002 released after close. 120 Node and 6 Python checks passed, including owned-process cancellation, persistence before shutdown, ownership rejection and unrelated-process preservation. No paid model invoked; remote cancellation/credit refunds are not guaranteed. Existing shortcuts use the backed icon; user acceptance of taskbar appearance and multi-window usage remains pending.

@@ -6,6 +6,7 @@ import { isSharedStorageEnabled } from "@/lib/shared-storage";
 import { nanoid } from "nanoid";
 
 import i18n from "@/i18n";
+import type { CanvasBackgroundMode } from "@/lib/canvas-theme";
 
 export type ApiCallFormat = "openai" | "gemini";
 export type ModelCapability = "image" | "video" | "text" | "audio";
@@ -58,6 +59,8 @@ export type AiConfig = {
     proxyUrl: string;
     nodeRegenerateBehavior: "new-node" | "overwrite";
     autoFocusOnSelect: boolean;
+    canvasBackgroundMode: CanvasBackgroundMode;
+    canvasShowImageInfo: boolean;
 };
 
 export type WebdavSyncConfig = {
@@ -127,6 +130,8 @@ export const defaultConfig: AiConfig = {
     proxyUrl: DEFAULT_LOCAL_PROXY_URL,
     nodeRegenerateBehavior: "new-node",
     autoFocusOnSelect: false,
+    canvasBackgroundMode: "lines",
+    canvasShowImageInfo: false,
 };
 
 export const defaultWebdavSyncConfig: WebdavSyncConfig = {
