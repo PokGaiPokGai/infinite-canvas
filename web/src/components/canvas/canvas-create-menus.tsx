@@ -39,7 +39,7 @@ export function ConnectionCreateMenu({
             onPointerDown={(event) => event.stopPropagation()}
         >
             <div className="mb-1.5 flex items-center justify-between px-1">
-                <span className="text-sm font-medium" style={{ color: theme.node.muted }}>
+                <span className="text-canvas-ui font-medium" style={{ color: theme.node.muted }}>
                     {t("canvas.createMenu.fromNode")}
                 </span>
                 <button type="button" className="grid size-7 place-items-center rounded-lg text-base opacity-55 transition hover:bg-white/10 hover:opacity-100" onClick={onClose} aria-label={t("canvas.createMenu.close")}>
@@ -71,9 +71,9 @@ export function ConnectionCreateOption({ theme, icon, title, description, onClic
                 {icon}
             </span>
             <span className="min-w-0 flex-1">
-                <span className="flex items-center gap-2 text-sm font-medium leading-5">{title}</span>
+                <span className="flex items-center gap-2 text-canvas-ui font-medium leading-5">{title}</span>
                 {description ? (
-                    <span className="mt-0.5 block truncate text-xs" style={{ color: theme.node.muted }}>
+                    <span className="mt-0.5 block truncate text-canvas-caption" style={{ color: theme.node.muted }}>
                         {description}
                     </span>
                 ) : null}
@@ -99,7 +99,7 @@ function NodeCreateItem({ definition, onCreate }: { definition: CanvasNodeDefini
     const title = getNodeSpec(definition.type).title;
     return <button type="button" role="menuitem" title={[title, definition.description].filter(Boolean).join("\n")} onClick={() => onCreate(definition.type)} className="flex h-12 w-full min-w-0 items-center gap-2.5 rounded-md px-2.5 text-left transition hover:bg-black/5 dark:hover:bg-white/10 focus-visible:outline focus-visible:outline-1">
         <span className="grid size-5 shrink-0 place-items-center" style={{ color: theme.node.muted }}>{definition.icon}</span>
-        <span className="min-w-0 flex-1"><span className="block truncate text-sm">{title}</span>{definition.description ? <span className="mt-0.5 block truncate text-xs" style={{ color: theme.node.faint }}>{definition.description}</span> : null}</span>
+        <span className="min-w-0 flex-1"><span className="block truncate text-canvas-ui">{title}</span>{definition.description ? <span className="mt-0.5 block truncate text-canvas-caption" style={{ color: theme.node.faint }}>{definition.description}</span> : null}</span>
     </button>;
 }
 
@@ -119,7 +119,7 @@ function NodeCategorySubmenu({ active, definitions, panel, onCreate, onBack }: {
     const width = 300, height = definitions.length * 48 + 50, margin = 12;
     const left = anchor.right + 4 + width <= window.innerWidth - margin ? anchor.right + 4 : anchor.left - 4 - width;
     return createPortal(<CanvasPanel panel={panel} panelRef={submenuRef} id={`canvas-node-category-${active.category}`} role="menu" aria-label={t(`canvas.createMenu.categories.${active.category}`)} data-canvas-no-zoom className="fixed z-[121] flex cursor-default flex-col overflow-hidden rounded-lg border shadow-2xl [&_button]:cursor-pointer" style={{ width, maxWidth: `calc(100vw - ${margin * 2}px)`, maxHeight: `calc(100dvh - ${margin * 2}px)`, left: `clamp(${margin}px, ${left}px, max(${margin}px, calc(100vw - ${width + margin}px)))`, top: `clamp(${margin}px, ${anchor.top}px, max(${margin}px, calc(100dvh - ${height + margin}px)))`, background: theme.node.panel, borderColor: theme.node.stroke, color: theme.node.text }} onKeyDown={(event) => { if (event.key === "ArrowLeft") { event.preventDefault(); onBack(); } else navigateNodeMenu(event); }}>
-        <div className="flex h-10 shrink-0 items-center border-b px-3 text-xs" style={{ borderColor: theme.node.stroke, color: theme.node.muted }}>{t(`canvas.createMenu.categories.${active.category}`)}</div>
+        <div className="flex h-10 shrink-0 items-center border-b px-3 text-canvas-caption" style={{ borderColor: theme.node.stroke, color: theme.node.muted }}>{t(`canvas.createMenu.categories.${active.category}`)}</div>
         <div className="thin-scrollbar min-h-0 overflow-x-hidden overflow-y-auto p-1">{definitions.map((def) => <NodeCreateItem key={def.type} definition={def} onCreate={onCreate} />)}</div>
     </CanvasPanel>, document.body);
 }
@@ -151,18 +151,18 @@ export function NodeCreateMenu({ position, onCreate, onClose }: { position: Posi
                 <CanvasPanel panel={panel} role="dialog" aria-label={t("canvas.createMenu.select")} data-canvas-no-zoom className="fixed z-[120] flex cursor-default flex-col overflow-hidden rounded-lg border shadow-2xl [&_button:not(:disabled)]:cursor-pointer [&_input]:cursor-text" style={{ width, maxWidth: `calc(100vw - ${margin * 2}px)`, maxHeight: `min(520px, calc(100dvh - ${margin * 2}px))`, left: `clamp(${margin}px, ${anchor.left}px, max(${margin}px, calc(100vw - ${width + margin}px)))`, top: `clamp(${margin}px, ${anchor.top}px, max(${margin}px, calc(100dvh - ${height + margin}px)))`, background: theme.node.panel, borderColor: theme.node.stroke, color: theme.node.text }}>
                     <div className="shrink-0 space-y-1 border-b px-2 py-1.5" style={{ borderColor: theme.node.stroke }}>
                         <div className="flex items-center justify-between gap-3">
-                            <h2 className="px-1 text-xs" style={{ color: theme.node.muted }}>{t("canvas.createMenu.select")}</h2>
+                            <h2 className="px-1 text-canvas-title font-semibold" style={{ color: theme.node.muted }}>{t("canvas.createMenu.select")}</h2>
                             <button type="button" className="grid size-7 shrink-0 place-items-center rounded-lg opacity-55 transition hover:opacity-100" onClick={panel.close} aria-label={t("canvas.createMenu.close")}><X className="size-4" /></button>
                         </div>
                         <div className="flex min-w-0 items-center gap-2 rounded-lg border px-3 focus-within:ring-1" style={{ borderColor: theme.node.stroke }}>
                             <Search className="size-4 shrink-0" style={{ color: theme.node.faint }} />
-                            <input autoFocus type="search" aria-label={t("canvas.createMenu.search")} placeholder={t("canvas.createMenu.search")} value={query} onChange={(event) => { setQuery(event.target.value); setActive(null); }} onKeyDown={(event) => { if (event.nativeEvent.isComposing) return; if (event.key === "Enter" && searching && matching[0]) { event.preventDefault(); onCreate(matching[0].type); } else if (event.key === "ArrowDown") { event.preventDefault(); resultsRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus(); } }} className="h-8 min-w-0 flex-1 bg-transparent text-sm outline-none [&::-webkit-search-cancel-button]:appearance-none" />
+                            <input autoFocus type="search" aria-label={t("canvas.createMenu.search")} placeholder={t("canvas.createMenu.search")} value={query} onChange={(event) => { setQuery(event.target.value); setActive(null); }} onKeyDown={(event) => { if (event.nativeEvent.isComposing) return; if (event.key === "Enter" && searching && matching[0]) { event.preventDefault(); onCreate(matching[0].type); } else if (event.key === "ArrowDown") { event.preventDefault(); resultsRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus(); } }} className="h-8 min-w-0 flex-1 bg-transparent text-canvas-ui outline-none [&::-webkit-search-cancel-button]:appearance-none" />
                             {query ? <button type="button" aria-label={t("canvas.createMenu.clearSearch")} onClick={() => setQuery("")} className="grid size-6 shrink-0 place-items-center opacity-55 hover:opacity-100"><X className="size-3.5" /></button> : null}
                         </div>
                     </div>
                     <div ref={resultsRef} role="menu" aria-label={t("canvas.createMenu.category")} onKeyDown={navigateNodeMenu} className="thin-scrollbar min-h-0 overflow-x-hidden overflow-y-auto p-1">
-                        {searching ? matching.length ? matching.map((def) => <NodeCreateItem key={def.type} definition={def} onCreate={onCreate} />) : <div role="status" className="px-3 py-6 text-center text-sm" style={{ color: theme.node.muted }}>{t("canvas.createMenu.noResults")}</div> : categories.map((category) => <button key={category} type="button" role="menuitem" aria-haspopup="menu" aria-expanded={active?.category === category} aria-controls={active?.category === category ? `canvas-node-category-${category}` : undefined} onMouseEnter={(event) => setActive({ category, button: event.currentTarget, focusFirst: false })} onFocus={(event) => setActive({ category, button: event.currentTarget, focusFirst: false })} onClick={(event) => setActive({ category, button: event.currentTarget, focusFirst: event.detail === 0 })} onKeyDown={(event) => { if (event.key === "ArrowRight") { event.preventDefault(); setActive({ category, button: event.currentTarget, focusFirst: true }); } }} className="flex h-9 w-full min-w-0 items-center gap-3 rounded-md px-3 text-left text-sm hover:bg-black/5 dark:hover:bg-white/10 focus-visible:outline focus-visible:outline-1" style={{ background: active?.category === category ? theme.toolbar.activeBg : undefined }}>
-                            <span className="min-w-0 flex-1 truncate">{t(`canvas.createMenu.categories.${category}`)}</span><span className="text-xs" style={{ color: theme.node.faint }}>{definitions.filter((def) => categoryOf(def) === category).length}</span><ChevronRight className="size-3.5 shrink-0" style={{ color: theme.node.muted }} />
+                        {searching ? matching.length ? matching.map((def) => <NodeCreateItem key={def.type} definition={def} onCreate={onCreate} />) : <div role="status" className="px-3 py-6 text-center text-canvas-ui" style={{ color: theme.node.muted }}>{t("canvas.createMenu.noResults")}</div> : categories.map((category) => <button key={category} type="button" role="menuitem" aria-haspopup="menu" aria-expanded={active?.category === category} aria-controls={active?.category === category ? `canvas-node-category-${category}` : undefined} onMouseEnter={(event) => setActive({ category, button: event.currentTarget, focusFirst: false })} onFocus={(event) => setActive({ category, button: event.currentTarget, focusFirst: false })} onClick={(event) => setActive({ category, button: event.currentTarget, focusFirst: event.detail === 0 })} onKeyDown={(event) => { if (event.key === "ArrowRight") { event.preventDefault(); setActive({ category, button: event.currentTarget, focusFirst: true }); } }} className="flex h-9 w-full min-w-0 items-center gap-3 rounded-md px-3 text-left text-canvas-ui hover:bg-black/5 dark:hover:bg-white/10 focus-visible:outline focus-visible:outline-1" style={{ background: active?.category === category ? theme.toolbar.activeBg : undefined }}>
+                            <span className="min-w-0 flex-1 truncate">{t(`canvas.createMenu.categories.${category}`)}</span><span className="text-canvas-caption" style={{ color: theme.node.faint }}>{definitions.filter((def) => categoryOf(def) === category).length}</span><ChevronRight className="size-3.5 shrink-0" style={{ color: theme.node.muted }} />
                         </button>)}
                     </div>
                 </CanvasPanel>, document.body,

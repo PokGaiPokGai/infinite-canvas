@@ -1,20 +1,20 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 
 import { canvasThemes } from "@/lib/canvas-theme";
-import { getNodeDefinition } from "@/lib/canvas/node-registry";
+
 import { useThemeStore } from "@/stores/use-theme-store";
 import { type CanvasNodeData, type ViewportTransform } from "@/types/canvas";
 
-export function Minimap({ nodes, viewport, viewportSize, onViewportChange }: { nodes: CanvasNodeData[]; viewport: ViewportTransform; viewportSize: { width: number; height: number }; onViewportChange: (viewport: ViewportTransform) => void }) {
+export function Minimap({ nodes, selectedNodeIds, viewport, viewportSize, onViewportChange }: { nodes: CanvasNodeData[]; selectedNodeIds: Set<string>; viewport: ViewportTransform; viewportSize: { width: number; height: number }; onViewportChange: (viewport: ViewportTransform) => void }) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const containerRef = useRef<HTMLDivElement>(null);
     const [isDragging, setIsDragging] = useState(false);
-    const width = 240;
-    const height = 160;
+    const width = 164;
+    const height = 100;
 
     const { worldBounds, scale, offset } = useMemo(() => {
         if (!nodes.length) {
-            return { worldBounds: { x: -500, y: -500, w: 1000, h: 1000 }, scale: 0.16, offset: { x: 40, y: 0 } };
+            return { worldBounds: { x: -500, y: -500, w: 1000, h: 1000 }, scale: 0.1, offset: { x: 32, y: 0 } };
         }
 
         let minX = Infinity;
@@ -96,10 +96,10 @@ export function Minimap({ nodes, viewport, viewportSize, onViewportChange }: { n
     };
 
     return (
-        <div className="absolute bottom-24 left-6 z-50 overflow-hidden rounded-lg border shadow-2xl backdrop-blur-sm" style={{ width, height, background: theme.toolbar.panel, borderColor: theme.toolbar.border }}>
+        <div data-canvas-minimap className="relative overflow-hidden" style={{ width, height }}>
             <div
                 ref={containerRef}
-                className="relative h-full w-full cursor-crosshair"
+                className="relative h-full w-full touch-none cursor-grab active:cursor-grabbing"
                 onPointerDown={(event) => {
                     event.preventDefault();
                     event.currentTarget.setPointerCapture(event.pointerId);
@@ -110,11 +110,12 @@ export function Minimap({ nodes, viewport, viewportSize, onViewportChange }: { n
                     if (isDragging) updateViewportFromEvent(event);
                 }}
                 onPointerUp={() => setIsDragging(false)}
-                onPointerLeave={() => setIsDragging(false)}
+                onPointerCancel={() => setIsDragging(false)}
+                onLostPointerCapture={() => setIsDragging(false)}
             >
                 {nodes.map((node) => {
                     const pos = toMinimap(node.position.x, node.position.y);
-                    const color = getNodeDefinition(node.type)?.minimapColor || theme.node.muted;
+                    const color = selectedNodeIds.has(node.id) ? theme.socket.audio : theme.node.faint;
                     return (
                         <div
                             key={node.id}
@@ -130,7 +131,7 @@ export function Minimap({ nodes, viewport, viewportSize, onViewportChange }: { n
                         />
                     );
                 })}
-                <div className="pointer-events-none absolute border" style={{ left: viewportRect.x, top: viewportRect.y, width: viewportRect.w, height: viewportRect.h, borderColor: theme.node.activeStroke, background: `${theme.node.activeStroke}18` }} />
+                <div className="pointer-events-none absolute rounded-sm" style={{ left: viewportRect.x, top: viewportRect.y, width: viewportRect.w, height: viewportRect.h, background: theme.canvas.selectionFill }} />
             </div>
         </div>
     );

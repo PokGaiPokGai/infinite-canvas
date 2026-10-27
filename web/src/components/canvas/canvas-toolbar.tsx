@@ -1,14 +1,16 @@
 import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactNode, RefObject } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Button, Segmented, Switch } from "antd";
 import { CircleDot, Eraser, Grid2x2, Group, Hand, Image as ImageIcon, Info, LocateFixed, Moon, MousePointer2, Music2, Palette, Puzzle, Redo2, Settings2, Square, Sun, Trash2, Type, Undo2, Upload, Video } from "lucide-react";
 
 import { canvasThemes, type CanvasBackgroundMode, type CanvasColorTheme, type CanvasTheme } from "@/lib/canvas-theme";
 import { getNodePluginId, listNodeDefinitions, useNodeRegistryVersion } from "@/lib/canvas/node-registry";
-import { getNodeSpec } from "@/constant/canvas";
+import { CANVAS_NODE_DRAG_TYPE, getNodeSpec } from "@/constant/canvas";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler";
 import { useTranslation } from "react-i18next";
+
+import { CanvasPanel, useCanvasPanel } from "./canvas-panel";
 
 export function CanvasToolbar({
     selectedCount,
@@ -17,13 +19,6 @@ export function CanvasToolbar({
     canRedo,
     backgroundMode,
     showImageInfo,
-    onAddImage,
-    onAddVideo,
-    onAddAudio,
-    onAddText,
-    onAddConfig,
-    onAddGroup,
-    onAddExtensionNode,
     onUndo,
     onRedo,
     onUpload,
@@ -40,13 +35,6 @@ export function CanvasToolbar({
     canRedo: boolean;
     backgroundMode: CanvasBackgroundMode;
     showImageInfo: boolean;
-    onAddImage: () => void;
-    onAddVideo: () => void;
-    onAddAudio: () => void;
-    onAddText: () => void;
-    onAddConfig: () => void;
-    onAddGroup: () => void;
-    onAddExtensionNode: (type: string) => void;
     onUndo: () => void;
     onRedo: () => void;
     onUpload: () => void;
@@ -64,11 +52,10 @@ export function CanvasToolbar({
     const setTheme = useThemeStore((state) => state.setTheme);
     const theme = canvasThemes[colorTheme];
     const [hovered, setHovered] = useState<string | null>(null);
-    const [tipX, setTipX] = useState(0);
-    const [appearanceOpen, setAppearanceOpen] = useState(false);
-    const [panelX, setPanelX] = useState(0);
-    const [extensionsOpen, setExtensionsOpen] = useState(false);
-    const [extPanelX, setExtPanelX] = useState(0);
+    const [tipY, setTipY] = useState(0);
+    const toolbarPanel = useCanvasPanel({ closeOnEscape: true });
+    const appearanceOpen = toolbarPanel.activeId === "appearance";
+    const extensionsOpen = toolbarPanel.activeId === "extensions";
     // Keep extension plugin nodes synchronized with registry changes.
     useNodeRegistryVersion();
     const extensionDefs = listNodeDefinitions().filter((def) => def.showInCreateMenu !== false && getNodePluginId(def.type) !== "builtin");
@@ -77,52 +64,40 @@ export function CanvasToolbar({
     const activeStyle = { background: theme.toolbar.activeBg, color: theme.toolbar.activeText };
     const tip = hovered ? toolLabel(hovered, t) : "";
 
-    // Close extension-node and canvas-appearance popovers when clicking outside the toolbar and its panels.
-    useEffect(() => {
-        if (!extensionsOpen && !appearanceOpen) return;
-        const handlePointerDown = (event: PointerEvent) => {
-            if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
-                setExtensionsOpen(false);
-                setAppearanceOpen(false);
-            }
-        };
-        document.addEventListener("pointerdown", handlePointerDown, true);
-        return () => document.removeEventListener("pointerdown", handlePointerDown, true);
-    }, [extensionsOpen, appearanceOpen]);
 
     return (
-        <div ref={rootRef} className="pointer-events-none absolute bottom-5 z-50 flex justify-center" style={{ left: 300, right: 16 }} data-canvas-bottom-toolbar>
-            {tip ? <DockTip label={tip} x={tipX} theme={theme} /> : null}
-            <div ref={wrapRef} className="thin-scrollbar pointer-events-auto flex h-14 max-w-full items-center gap-1 overflow-x-auto rounded-xl border px-2 shadow-lg backdrop-blur [&>*]:shrink-0" style={dockStyle}>
-                <ToolbarButton id={`tool-${canvasTool}`} label={t(`canvas.toolbar.${canvasTool}`)} active hovered={hovered} activeStyle={activeStyle} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={() => onCanvasToolChange(canvasTool === "select" ? "pan" : "select")}>
+        <CanvasPanel panel={toolbarPanel} panelRef={rootRef} className="pointer-events-none absolute left-3 top-1/2 z-50 flex max-h-[calc(100%-128px)] w-[52px] -translate-y-1/2 flex-col" data-canvas-side-toolbar data-canvas-no-zoom>
+            {tip ? <DockTip label={tip} y={tipY} theme={theme} /> : null}
+            <div ref={wrapRef} className="thin-scrollbar pointer-events-auto flex min-h-0 flex-col items-center gap-1 overflow-y-auto rounded-xl border px-2 py-2 shadow-lg backdrop-blur [&>*]:shrink-0" style={dockStyle}>
+                <ToolbarButton id={`tool-${canvasTool}`} label={t(`canvas.toolbar.${canvasTool}`)} active hovered={hovered} activeStyle={activeStyle} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipY={setTipY} onHover={setHovered} onClick={() => onCanvasToolChange(canvasTool === "select" ? "pan" : "select")}>
                     {canvasTool === "select" ? <MousePointer2 className="size-4.5" /> : <Hand className="size-4.5" />}
                 </ToolbarButton>
-                <ToolbarButton id="tool-undo" label={t("canvas.undo")} disabled={!canUndo} hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onUndo}>
+                <ToolbarButton id="tool-undo" label={t("canvas.undo")} disabled={!canUndo} hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipY={setTipY} onHover={setHovered} onClick={onUndo}>
                     <Undo2 className="size-4.5" />
                 </ToolbarButton>
-                <ToolbarButton id="tool-redo" label={t("canvas.redo")} disabled={!canRedo} hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onRedo}>
+                <ToolbarButton id="tool-redo" label={t("canvas.redo")} disabled={!canRedo} hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipY={setTipY} onHover={setHovered} onClick={onRedo}>
                     <Redo2 className="size-4.5" />
                 </ToolbarButton>
-                <ToolbarButton id="tool-focus" label={t("canvas.toolbar.focus")} disabled={!selectedCount} hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onFocusSelected}>
+                <ToolbarButton id="tool-focus" label={t("canvas.toolbar.focus")} disabled={!selectedCount} hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipY={setTipY} onHover={setHovered} onClick={onFocusSelected}>
                     <LocateFixed className="size-4.5" />
                 </ToolbarButton>
                 <Divider theme={theme} />
-                <ToolbarButton id="tool-text" label={t("canvas.toolbar.text")} hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onAddText}>
+                <ToolbarButton id="tool-text" label={t("canvas.toolbar.text")} hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipY={setTipY} onHover={setHovered} nodeType="text">
                     <Type className="size-4.5" />
                 </ToolbarButton>
-                <ToolbarButton id="tool-image" label={t("canvas.toolbar.image")} hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onAddImage}>
+                <ToolbarButton id="tool-image" label={t("canvas.toolbar.image")} hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipY={setTipY} onHover={setHovered} nodeType="image">
                     <ImageIcon className="size-4.5" />
                 </ToolbarButton>
-                <ToolbarButton id="tool-video" label={t("canvas.toolbar.video")} hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onAddVideo}>
+                <ToolbarButton id="tool-video" label={t("canvas.toolbar.video")} hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipY={setTipY} onHover={setHovered} nodeType="video">
                     <Video className="size-4.5" />
                 </ToolbarButton>
-                <ToolbarButton id="tool-audio" label={t("canvas.toolbar.audio")} hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onAddAudio}>
+                <ToolbarButton id="tool-audio" label={t("canvas.toolbar.audio")} hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipY={setTipY} onHover={setHovered} nodeType="audio">
                     <Music2 className="size-4.5" />
                 </ToolbarButton>
-                <ToolbarButton id="tool-config" label={t("canvas.toolbar.config")} hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onAddConfig}>
+                <ToolbarButton id="tool-config" label={t("canvas.toolbar.config")} hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipY={setTipY} onHover={setHovered} nodeType="config">
                     <Settings2 className="size-4.5" />
                 </ToolbarButton>
-                <ToolbarButton id="tool-group" label={t("canvas.toolbar.group")} hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onAddGroup}>
+                <ToolbarButton id="tool-group" label={t("canvas.toolbar.group")} hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipY={setTipY} onHover={setHovered} nodeType="group">
                     <Group className="size-4.5" />
                 </ToolbarButton>
                 {extensionDefs.length ? (
@@ -134,18 +109,16 @@ export function CanvasToolbar({
                         activeStyle={activeStyle}
                         hoverStyle={hoverStyle}
                         wrapRef={wrapRef}
-                        onTipX={setTipX}
+                        onTipY={setTipY}
                         onHover={setHovered}
                         onClick={(event) => {
-                            setExtPanelX(getTipX(wrapRef.current, event.currentTarget));
-                            setAppearanceOpen(false);
-                            setExtensionsOpen((value) => !value);
+                            toolbarPanel.toggle("extensions", event);
                         }}
                     >
                         <Puzzle className="size-4.5" />
                     </ToolbarButton>
                 ) : null}
-                <ToolbarButton id="tool-upload" label={t("canvas.toolbar.upload")} hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onUpload}>
+                <ToolbarButton id="tool-upload" label={t("canvas.toolbar.upload")} hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipY={setTipY} onHover={setHovered} onClick={onUpload}>
                     <Upload className="size-4.5" />
                 </ToolbarButton>
                 <Divider theme={theme} />
@@ -157,12 +130,10 @@ export function CanvasToolbar({
                     activeStyle={activeStyle}
                     hoverStyle={hoverStyle}
                     wrapRef={wrapRef}
-                    onTipX={setTipX}
+                    onTipY={setTipY}
                     onHover={setHovered}
                     onClick={(event) => {
-                        setPanelX(getTipX(wrapRef.current, event.currentTarget));
-                        setExtensionsOpen(false);
-                        setAppearanceOpen((value) => !value);
+                        toolbarPanel.toggle("appearance", event);
                     }}
                 >
                     <Palette className="size-4.5" />
@@ -170,36 +141,37 @@ export function CanvasToolbar({
                 {selectedCount ? (
                     <>
                         <Divider theme={theme} />
-                        <ToolbarButton id="tool-delete" label={t("canvas.deleteSelected")} hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onDelete} danger>
+                        <ToolbarButton id="tool-delete" label={t("canvas.deleteSelected")} hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipY={setTipY} onHover={setHovered} onClick={onDelete} danger>
                             <Trash2 className="size-4.5" />
                         </ToolbarButton>
                     </>
                 ) : null}
                 <Divider theme={theme} />
-                <ToolbarButton id="tool-clear" label={t("canvas.toolbar.clear")} hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onClear} danger>
+                <ToolbarButton id="tool-clear" label={t("canvas.toolbar.clear")} hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipY={setTipY} onHover={setHovered} onClick={onClear} danger>
                     <Eraser className="size-4.5" />
                 </ToolbarButton>
             </div>
 
             {extensionsOpen && extensionDefs.length ? (
                 <div
-                    className="thin-scrollbar pointer-events-auto absolute bottom-[72px] z-30 max-h-[50vh] w-[240px] -translate-x-1/2 overflow-y-auto rounded-xl border p-2 shadow-xl backdrop-blur"
-                    style={{ left: extPanelX || "50%", background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.toolbar.item }}
+                    className="thin-scrollbar pointer-events-auto absolute left-[60px] top-0 z-30 max-h-full w-[240px] overflow-y-auto rounded-xl border p-2 shadow-xl backdrop-blur"
+                    style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.toolbar.item }}
                 >
-                    <div className="px-1.5 pb-1.5 text-[11px] font-medium opacity-50">{t("canvas.toolbar.extensions")}</div>
+                    <div className="px-1.5 pb-1.5 text-canvas-caption font-medium opacity-50">{t("canvas.toolbar.extensions")}</div>
                     <div className="grid gap-0.5">
                         {extensionDefs.map((def) => (
                             <button
                                 key={def.type}
                                 type="button"
-                                className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-sm transition"
+                                className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-canvas-ui transition cursor-grab active:cursor-grabbing"
                                 style={{ color: theme.toolbar.item }}
                                 onMouseEnter={(event) => (event.currentTarget.style.background = theme.toolbar.itemHover)}
                                 onMouseLeave={(event) => (event.currentTarget.style.background = "transparent")}
-                                onClick={() => {
-                                    onAddExtensionNode(def.type);
-                                    setExtensionsOpen(false);
-                                }}
+                                draggable
+                                data-node-drag-type={def.type}
+                                title="拖到画布放置"
+                                onDragStart={(event) => { event.dataTransfer.setData(CANVAS_NODE_DRAG_TYPE, def.type); event.dataTransfer.effectAllowed = "copy"; }}
+                                onDragEnd={() => toolbarPanel.close()}
                             >
                                 <span className="grid size-7 shrink-0 place-items-center rounded-md text-base" style={{ background: theme.toolbar.itemHover }}>
                                     {def.icon}
@@ -213,11 +185,11 @@ export function CanvasToolbar({
 
             {appearanceOpen ? (
                 <div
-                    className="pointer-events-auto absolute bottom-[72px] z-30 w-[248px] -translate-x-1/2 rounded-xl border p-2.5 shadow-xl backdrop-blur"
-                    style={{ left: panelX || "50%", background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.toolbar.item }}
+                    className="pointer-events-auto absolute bottom-0 left-[60px] z-30 max-h-full w-[248px] overflow-y-auto rounded-xl border p-2.5 shadow-xl backdrop-blur"
+                    style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.toolbar.item }}
                 >
-                    <div className="px-1 pb-2 text-sm font-medium opacity-65">{t("canvas.toolbar.appearance")}</div>
-                    <div className="px-1 pb-1.5 text-[11px] font-medium opacity-50">{t("canvas.toolbar.themeMode")}</div>
+                    <div className="px-1 pb-2 text-canvas-ui font-medium opacity-65">{t("canvas.toolbar.appearance")}</div>
+                    <div className="px-1 pb-1.5 text-canvas-caption font-medium opacity-50">{t("canvas.toolbar.themeMode")}</div>
                     <div className="grid grid-cols-2 gap-1 rounded-lg p-1" style={{ background: theme.toolbar.itemHover }}>
                         <CanvasThemeButton colorTheme={colorTheme} targetTheme="light" onThemeChange={setTheme}>
                             <Sun className="size-4" />
@@ -228,7 +200,7 @@ export function CanvasToolbar({
                             {t("canvas.toolbar.dark")}
                         </CanvasThemeButton>
                     </div>
-                    <div className="mt-3 px-1 pb-1.5 text-[11px] font-medium opacity-50">{t("canvas.toolbar.gridStyle")}</div>
+                    <div className="mt-3 px-1 pb-1.5 text-canvas-caption font-medium opacity-50">{t("canvas.toolbar.gridStyle")}</div>
                     <Segmented
                         className="w-full !p-1 [&_.ant-segmented-group]:!flex [&_.ant-segmented-item]:!min-h-8 [&_.ant-segmented-item]:!flex-1 [&_.ant-segmented-item-label]:!min-h-8 [&_.ant-segmented-item-label]:!leading-8"
                         value={backgroundMode}
@@ -262,7 +234,7 @@ export function CanvasToolbar({
                         ]}
                     />
                     <div className="mt-3 flex items-center justify-between gap-3 rounded-lg px-1.5 py-1">
-                        <span className="inline-flex min-w-0 items-center gap-1.5 text-[11px] font-medium opacity-65">
+                        <span className="inline-flex min-w-0 items-center gap-1.5 text-canvas-caption font-medium opacity-65">
                             <Info className="size-3.5" />
                             {t("canvas.toolbar.imageInfo")}
                         </span>
@@ -270,7 +242,7 @@ export function CanvasToolbar({
                     </div>
                 </div>
             ) : null}
-        </div>
+        </CanvasPanel>
     );
 }
 
@@ -282,9 +254,10 @@ function ToolbarButton({
     activeStyle,
     hoverStyle,
     wrapRef,
-    onTipX,
+    onTipY,
     onHover,
     onClick,
+    nodeType,
     disabled = false,
     danger = false,
     children,
@@ -296,9 +269,10 @@ function ToolbarButton({
     activeStyle?: CSSProperties;
     hoverStyle: CSSProperties;
     wrapRef: RefObject<HTMLDivElement | null>;
-    onTipX: (x: number) => void;
+    onTipY: (x: number) => void;
     onHover: (id: string | null) => void;
     onClick?: (event: ReactMouseEvent<HTMLElement>) => void;
+    nodeType?: string;
     disabled?: boolean;
     danger?: boolean;
     children: ReactNode;
@@ -309,13 +283,17 @@ function ToolbarButton({
         <Button
             type="text"
             aria-label={label}
-            className="!h-8 !w-8 !min-w-8 !p-0"
+            draggable={Boolean(nodeType)}
+            data-node-drag-type={nodeType}
+            title={nodeType ? `${label} · 拖到画布放置` : undefined}
+            onDragStart={(event) => { if (!nodeType) return; event.dataTransfer.setData(CANVAS_NODE_DRAG_TYPE, nodeType); event.dataTransfer.effectAllowed = "copy"; onHover(null); }}
+            className={`!h-8 !w-8 !min-w-8 !p-0 ${nodeType ? "!cursor-grab active:!cursor-grabbing" : ""}`}
             disabled={disabled}
             style={active ? activeStyle : hovered === id && !disabled ? hoverStyle : { color: danger ? "#f87171" : theme.toolbar.item, opacity: disabled ? 0.35 : 1 }}
             icon={children}
             onMouseEnter={(event) => {
                 onHover(id);
-                onTipX(getTipX(wrapRef.current, event.currentTarget));
+                onTipY(getTipY(wrapRef.current, event.currentTarget));
             }}
             onMouseLeave={() => onHover(null)}
             onClick={onClick}
@@ -324,7 +302,7 @@ function ToolbarButton({
 }
 
 function Divider({ theme }: { theme: CanvasTheme }) {
-    return <div className="mx-1 h-6 w-px" style={{ background: theme.toolbar.border }} />;
+    return <div className="my-1 h-px w-6" style={{ background: theme.toolbar.border }} />;
 }
 
 function CanvasThemeButton({ colorTheme, targetTheme, onThemeChange, children }: { colorTheme: CanvasColorTheme; targetTheme: CanvasColorTheme; onThemeChange: (theme: CanvasColorTheme) => void; children: ReactNode }) {
@@ -339,7 +317,7 @@ function CanvasThemeButton({ colorTheme, targetTheme, onThemeChange, children }:
             theme={colorTheme}
             targetTheme={targetTheme}
             onThemeChange={onThemeChange}
-            className="inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-md px-2 text-sm transition"
+            className="inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-md px-2 text-canvas-ui transition"
             style={active ? activeStyle : { color: theme.toolbar.item }}
             aria-label={label}
             title={label}
@@ -349,9 +327,9 @@ function CanvasThemeButton({ colorTheme, targetTheme, onThemeChange, children }:
     );
 }
 
-function DockTip({ label, x, theme }: { label: string; x: number; theme: CanvasTheme }) {
+function DockTip({ label, y, theme }: { label: string; y: number; theme: CanvasTheme }) {
     return (
-        <span className="absolute bottom-[calc(100%+8px)] -translate-x-1/2 rounded-md px-2 py-1 text-xs shadow-lg" style={{ left: x, background: theme.node.text, color: theme.node.panel }}>
+        <span className="pointer-events-none absolute left-[60px] -translate-y-1/2 whitespace-nowrap rounded-md px-2 py-1 text-canvas-caption shadow-lg" style={{ top: y, background: theme.node.text, color: theme.node.panel }}>
             {label}
         </span>
     );
@@ -377,9 +355,9 @@ function toolLabel(id: string, t: (key: string) => string) {
     return "";
 }
 
-function getTipX(wrap: HTMLDivElement | null, target: HTMLElement) {
+function getTipY(wrap: HTMLDivElement | null, target: HTMLElement) {
     if (!wrap) return 0;
     const wrapBox = wrap.parentElement?.getBoundingClientRect() || wrap.getBoundingClientRect();
     const box = target.getBoundingClientRect();
-    return box.left - wrapBox.left + box.width / 2;
+    return box.top - wrapBox.top + box.height / 2;
 }

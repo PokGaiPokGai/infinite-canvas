@@ -53,7 +53,7 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
     return (
         <ImageSettingsTheme theme={theme}>
             <div
-                className={className}
+                className={`canvas-ui ${className}`}
                 style={{ color: theme.node.text }}
                 onMouseDown={(event) => {
                     event.stopPropagation();
@@ -61,13 +61,13 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
                     if (document.activeElement instanceof HTMLInputElement && event.currentTarget.contains(document.activeElement)) document.activeElement.blur();
                 }}
             >
-                {showTitle ? <div className="text-sm font-semibold">{t("settingsPanels.image.title")}</div> : null}
+                {showTitle ? <div className="text-canvas-title font-semibold">{t("settingsPanels.image.title")}</div> : null}
                 <QualityControl value={quality} theme={theme} onChange={(value) => onConfigChange("quality", value)} />
                 <div className="space-y-2.5">
                     <div className="flex items-center justify-between gap-3">
                         <SettingTitle color={theme.node.muted}>{t("settingsPanels.image.size")}</SettingTitle>
                         <div className="flex items-center gap-2">
-                            <span className="text-xs font-medium" style={{ color: theme.node.muted }}>
+                            <span className="text-canvas-ui font-medium" style={{ color: theme.node.muted }}>
                                 {t("settingsPanels.image.align16")}
                             </span>
                             <span title={t("settingsPanels.image.align16Hint")} onMouseDown={(event) => event.stopPropagation()}>
@@ -98,7 +98,7 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
                             <button
                                 key={item.value}
                                 type="button"
-                                className="flex h-[72px] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border bg-transparent text-sm transition hover:opacity-80"
+                                className="flex h-[72px] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border bg-transparent text-canvas-ui transition hover:opacity-80"
                                 style={{ borderColor: selectedRatio === item.value ? theme.node.text : theme.node.stroke, background: "transparent", color: theme.node.text }}
                                 onMouseDown={(event) => event.stopPropagation()}
                                 onClick={() => selectRatio(item.value)}
@@ -112,7 +112,7 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
                 <div className="flex items-center justify-between gap-3">
                     <div className="space-y-0.5">
                         <SettingTitle color={theme.node.muted}>{t("settingsPanels.image.transparent")}</SettingTitle>
-                        <div className="text-xs" style={{ color: theme.node.muted, opacity: 0.75 }}>
+                        <div className="text-canvas-caption" style={{ color: theme.node.muted, opacity: 0.75 }}>
                             {t("settingsPanels.image.transparentHint")}
                         </div>
                     </div>
@@ -161,7 +161,7 @@ function OptionPill({ selected, theme, onClick, children }: { selected: boolean;
     return (
         <button
             type="button"
-            className="h-9 cursor-pointer rounded-full border px-2 text-sm transition hover:opacity-80"
+            className="h-9 cursor-pointer rounded-full border px-2 text-canvas-ui transition hover:opacity-80"
             style={{ background: "transparent", borderColor: selected ? theme.node.text : theme.node.stroke, color: theme.node.text }}
             onMouseDown={(event) => event.stopPropagation()}
             onClick={onClick}
@@ -179,8 +179,8 @@ function QualityControl({ value, theme, onChange }: { value: string; theme: Canv
     const accent = index === 0 ? theme.node.muted : index === qualityOptions.length - 1 ? theme === canvasThemes.dark ? "#c084fc" : "#7e22ce" : theme === canvasThemes.dark ? "#60a5fa" : "#1d4ed8";
     return (
         <div className="rounded-2xl border px-3 pb-3 pt-2.5" style={{ background: theme.node.fill, borderColor: theme.node.stroke }}>
-            <div className="text-center text-xs font-semibold transition-colors duration-200 motion-reduce:transition-none" style={{ color: accent }}>{t(`settingsPanels.common.${qualityOptions[index].labelKey}`)}</div>
-            <div className="text-center text-[11px] leading-4" style={{ color: theme.node.muted }}>{t("settingsPanels.image.quality")}</div>
+            <div className="text-center text-canvas-ui font-medium transition-colors duration-200 motion-reduce:transition-none" style={{ color: accent }}>{t(`settingsPanels.common.${qualityOptions[index].labelKey}`)}</div>
+            <div className="text-center text-canvas-caption" style={{ color: theme.node.muted }}>{t("settingsPanels.image.quality")}</div>
             <div className="relative mt-2 h-7 rounded-full focus-within:ring-2 focus-within:ring-blue-500/60">
                 <div className="pointer-events-none absolute inset-x-0 top-1/2 h-6 -translate-y-1/2 overflow-hidden rounded-full" style={{ background: theme.node.stroke }}>
                     <div className="absolute inset-y-0 left-0 rounded-full bg-[#3b82f6] transition-[width,opacity] duration-[260ms] ease-out motion-reduce:transition-none" style={{ width: thumbPosition, opacity: index > 0 ? 1 : 0 }} />
@@ -204,7 +204,7 @@ function DimensionInput({ prefix, value, disabled, theme, alignToStep, onChange 
     };
 
     return (
-        <label className="flex h-9 overflow-hidden rounded-xl text-sm" style={{ background: theme.node.fill, color: theme.node.text, opacity: disabled ? 0.55 : 1 }}>
+        <label className="flex h-9 overflow-hidden rounded-xl text-canvas-ui" style={{ background: theme.node.fill, color: theme.node.text, opacity: disabled ? 0.55 : 1 }}>
             <span className="grid w-9 place-items-center" style={{ color: theme.node.muted }}>
                 {prefix}
             </span>
@@ -237,7 +237,7 @@ function CountInput({ value, max, theme, label, onChange }: { value: number; max
     };
 
     return (
-        <div className="flex h-9 w-full items-center overflow-hidden rounded-full border text-sm" style={{ borderColor: theme.node.stroke, color: theme.node.text }}>
+        <div className="flex h-9 w-full items-center overflow-hidden rounded-full border text-canvas-ui" style={{ borderColor: theme.node.stroke, color: theme.node.text }}>
             <button type="button" aria-label={`${label} -1`} disabled={current <= 1} className="grid h-full w-10 shrink-0 place-items-center bg-transparent text-lg transition hover:opacity-60 disabled:opacity-30" onMouseDown={(event) => { event.preventDefault(); event.stopPropagation(); }} onClick={() => commit(current - 1)}>−</button>
             <input
                 type="number"
@@ -272,7 +272,7 @@ function AspectIcon({ width, height, color }: { width: number; height: number; c
 
 function SettingTitle({ children, color }: { children: string; color: string }) {
     return (
-        <div className="text-xs font-medium" style={{ color }}>
+        <div className="text-canvas-ui font-medium" style={{ color }}>
             {children}
         </div>
     );

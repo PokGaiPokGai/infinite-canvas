@@ -89,7 +89,7 @@ export function CanvasPanel({ panel, panelRef, children, ...props }: HTMLAttribu
     }, [owners, panelRef]);
 
     return <PanelAncestors.Provider value={owners}>
-        <div {...props} ref={register} data-canvas-panel="" onPointerDown={(event) => { props.onPointerDown?.(event); event.stopPropagation(); }} onMouseDown={(event) => { props.onMouseDown?.(event); event.stopPropagation(); }} onClick={(event) => { props.onClick?.(event); event.stopPropagation(); }}>
+        <div {...props} className={`canvas-ui ${props.className ?? ""}`} ref={register} data-canvas-panel="" onPointerDown={(event) => { props.onPointerDown?.(event); event.stopPropagation(); }} onMouseDown={(event) => { props.onMouseDown?.(event); event.stopPropagation(); }} onClick={(event) => { props.onClick?.(event); event.stopPropagation(); }}>
             {children}
         </div>
     </PanelAncestors.Provider>;

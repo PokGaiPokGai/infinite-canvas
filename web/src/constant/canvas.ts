@@ -1,3 +1,5 @@
+export const CANVAS_NODE_DRAG_TYPE = "application/x-infinite-canvas-node";
+
 import i18n from "@/i18n";
 import { CanvasNodeType } from "@/types/canvas";
 import type { CanvasNodeMetadata } from "@/types/canvas";

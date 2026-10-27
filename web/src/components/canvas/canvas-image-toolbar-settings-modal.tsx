@@ -1,5 +1,6 @@
+import { NodeToolbarAction, nodeToolbarClassName } from "./node-toolbar-action";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { Button, Card, Checkbox, Form, Modal, Space, Switch, Tag, Tooltip, Typography, theme as antdTheme } from "antd";
+import { Button, Card, Checkbox, Form, Modal, Space, Tag, Typography, theme as antdTheme } from "antd";
 import { Ellipsis, Image as ImageIcon, Settings2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -34,18 +35,14 @@ export function ImageToolSettingsModal({
     open,
     tools,
     selectedIds,
-    showLabels,
     onToggle,
-    onShowLabelsChange,
     onCancel,
     onSave,
 }: {
     open: boolean;
     tools: ImageToolbarSettingsTool[];
     selectedIds: ImageQuickToolId[];
-    showLabels: boolean;
     onToggle: (id: ImageQuickToolId, visible: boolean) => void;
-    onShowLabelsChange: (value: boolean) => void;
     onCancel: () => void;
     onSave: () => void;
 }) {
@@ -116,7 +113,7 @@ export function ImageToolSettingsModal({
             resizeObserver?.disconnect();
             window.removeEventListener("resize", syncPreviewScroll);
         };
-    }, [open, selectedIds, showLabels, previewTools.length, syncPreviewScroll]);
+    }, [open, selectedIds, previewTools.length, syncPreviewScroll]);
 
     const scrollbarWidth = scrollbarTrackRef.current?.clientWidth || previewScroll.viewport;
     const scrollbarThumbWidth = previewScroll.max > 0 ? Math.min(scrollbarWidth, Math.max(64, (previewScroll.viewport / previewScroll.content) * scrollbarWidth)) : scrollbarWidth;
@@ -130,11 +127,7 @@ export function ImageToolSettingsModal({
             onCancel={onCancel}
             destroyOnHidden
             footer={
-                <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2">
-                        <span>{t("canvas.imageTools.showLabels")}</span>
-                        <Switch checked={showLabels} onChange={onShowLabelsChange} />
-                    </div>
+                <div className="flex items-center justify-end gap-3">
                     <Space>
                         <Button onClick={onCancel}>{t("common.cancel")}</Button>
                         <Button type="primary" onClick={onSave}>
@@ -161,12 +154,11 @@ export function ImageToolSettingsModal({
                 <div className="relative flex min-h-[300px] w-full justify-center pt-20 pb-9">
                     <div
                         ref={previewToolbarRef}
-                        className="hide-scrollbar absolute left-2 right-2 top-3 z-10 flex h-12 items-center overflow-x-auto rounded-[18px] border px-1 text-[13px]"
-                        style={{ background: token.colorBgElevated, borderColor: token.colorBorderSecondary, boxShadow: token.boxShadowSecondary, color: token.colorText }}
+                        className={`${nodeToolbarClassName} hide-scrollbar absolute left-2 right-2 top-3 z-10 overflow-x-auto px-1`}
                         onScroll={syncPreviewScroll}
                     >
                         {previewTools.map((tool) => (
-                            <PreviewToolbarItem key={tool.id} tool={tool} showLabels={showLabels} />
+                            <NodeToolbarAction key={tool.id} {...tool} tabIndex={-1} />
                         ))}
                     </div>
                     <div
@@ -216,18 +208,5 @@ export function ImageToolSettingsModal({
                 </Form.Item>
             </Form>
         </Modal>
-    );
-}
-
-function PreviewToolbarItem({ tool, showLabels }: { tool: PreviewTool; showLabels: boolean }) {
-    return (
-        <Tooltip title={tool.title}>
-            <span className="flex h-12 shrink-0 items-center px-1.5" style={{ color: tool.danger ? "#ef4444" : undefined }}>
-                <span className={`flex h-9 items-center rounded-lg px-2 ${showLabels ? "gap-2" : "justify-center"}`}>
-                    {tool.icon}
-                    {showLabels ? <span className="whitespace-nowrap">{tool.label}</span> : null}
-                </span>
-            </span>
-        </Tooltip>
     );
 }

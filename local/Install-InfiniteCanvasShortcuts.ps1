@@ -29,7 +29,7 @@ foreach ($target in $targets) {
     $shortcut.Arguments = $shortcutArguments
     $shortcut.WorkingDirectory = $appRoot
     $shortcut.IconLocation = "$icon,0"
-    $shortcut.Description = 'Infinite Canvas - local application window'
+    $shortcut.Description = 'Infinite Canvas - open in default browser'
     $shortcut.WindowStyle = 1
     $shortcut.Save()
     Write-Output "Shortcut created: $target"

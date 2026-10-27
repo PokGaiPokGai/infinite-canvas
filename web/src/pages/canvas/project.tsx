@@ -34,7 +34,7 @@ import { cropDataUrl, splitDataUrl, upscaleDataUrl } from "@/lib/canvas/canvas-i
 import { fitNodeSize, nodeSizeFromRatio } from "@/lib/canvas/canvas-node-size";
 import { captureVideoFrame, type VideoFramePosition } from "@/lib/canvas/canvas-video-frame";
 import { App, Button, Modal } from "antd";
-import { NODE_DEFAULT_SIZE, getNodeSpec } from "@/constant/canvas";
+import { CANVAS_NODE_DRAG_TYPE, NODE_DEFAULT_SIZE, getNodeSpec } from "@/constant/canvas";
 import { ActiveConnectionPath, ConnectionPath, ConnectionRoleBadge } from "@/components/canvas/canvas-connections";
 import { CanvasPanel, useCanvasPanel } from "@/components/canvas/canvas-panel";
 import { CanvasConfigComposer } from "@/components/canvas/canvas-config-composer";
@@ -191,10 +191,9 @@ function measureFocusFrame(container: HTMLDivElement | null, nodeId: string) {
     const nodeRect = container.querySelector<HTMLElement>(`[data-node-id="${nodeId}"]`)?.getBoundingClientRect();
     const panelRect = container.querySelector<HTMLElement>(`[data-node-id="${nodeId}"] [data-node-panel]`)?.getBoundingClientRect();
     const toolbarRect = document.querySelector<HTMLElement>(`[data-node-toolbar="${nodeId}"]`)?.getBoundingClientRect();
-    const dockRect = document.querySelector<HTMLElement>("[data-canvas-bottom-toolbar]")?.getBoundingClientRect();
     const below = nodeRect && panelRect ? panelRect.bottom - nodeRect.bottom : 0;
     const above = nodeRect && toolbarRect ? nodeRect.top - toolbarRect.top : 0;
-    return { above, below, bottomInset: dockRect && below > 0 ? Math.max(0, container.getBoundingClientRect().bottom - dockRect.top) : 0 };
+    return { above, below };
 }
 
 function InfiniteCanvasPage() {
@@ -1242,11 +1241,6 @@ function InfiniteCanvasPage() {
         setDialogNodeId(firstVisible?.type === CanvasNodeType.Group ? null : firstVisible?.id || null);
         return true;
     }, [getCanvasCenter]);
-
-    const resetViewport = useCallback(() => {
-        setViewport({ x: size.width / 2, y: size.height / 2, k: 1 });
-        setContextMenu(null);
-    }, [size.height, size.width]);
 
     const focusNode = useCallback(
         (nodeId: string) => {
@@ -2438,6 +2432,13 @@ function InfiniteCanvasPage() {
     const handleDrop = useCallback(
         (event: ReactDragEvent<HTMLDivElement>) => {
             event.preventDefault();
+            const nodeType = event.dataTransfer.getData(CANVAS_NODE_DRAG_TYPE);
+            if (nodeType) {
+                if (event.target instanceof Element && event.target.closest("[data-canvas-panel], [data-node-toolbar]")) return;
+                const definition = getNodeDefinition(nodeType);
+                if (definition && definition.showInCreateMenu !== false) createNode(nodeType, screenToCanvas(event.clientX, event.clientY));
+                return;
+            }
             const files = Array.from(event.dataTransfer.files).filter(
                 (item) => item.type.startsWith("image/") || item.type.startsWith("video/") || isAudioFile(item),
             );
@@ -2463,7 +2464,7 @@ function InfiniteCanvasPage() {
                 }
             }
         },
-        [createAudioFileNode, createImageFileNode, createVideoFileNode, screenToCanvas],
+        [createAudioFileNode, createImageFileNode, createVideoFileNode, createNode, screenToCanvas],
     );
 
     const startTitleEditing = useCallback(() => {
@@ -3614,13 +3615,6 @@ function InfiniteCanvasPage() {
                     canRedo={historyState.canRedo}
                     backgroundMode={backgroundMode}
                     showImageInfo={showImageInfo}
-                    onAddImage={() => createNode(CanvasNodeType.Image)}
-                    onAddVideo={() => createNode(CanvasNodeType.Video)}
-                    onAddAudio={() => createNode(CanvasNodeType.Audio)}
-                    onAddText={() => createNode(CanvasNodeType.Text)}
-                    onAddConfig={() => createNode(CanvasNodeType.Config)}
-                    onAddGroup={() => createNode(CanvasNodeType.Group)}
-                    onAddExtensionNode={(type) => createNode(type)}
                     onUndo={undoCanvas}
                     onRedo={redoCanvas}
                     onUpload={() => handleUploadRequest()}
@@ -3631,9 +3625,11 @@ function InfiniteCanvasPage() {
                     onShowImageInfoChange={setShowImageInfo}
                 />
 
-                {isMiniMapOpen ? <Minimap nodes={displayNodes} viewport={viewport} viewportSize={size} onViewportChange={setViewport} /> : null}
 
-                <CanvasZoomControls scale={viewport.k} onScaleChange={setZoomScale} onReset={resetViewport} isMiniMapOpen={isMiniMapOpen} onToggleMiniMap={() => setIsMiniMapOpen((value) => !value)} />
+
+                <CanvasZoomControls scale={viewport.k} onScaleChange={setZoomScale} isMiniMapOpen={isMiniMapOpen} onToggleMiniMap={() => setIsMiniMapOpen((value) => !value)}>
+                    <Minimap nodes={displayNodes} selectedNodeIds={selectedNodeIds} viewport={viewport} viewportSize={size} onViewportChange={setViewport} />
+                </CanvasZoomControls>
 
                 {contextMenu ? (
                     <CanvasNodeContextMenu

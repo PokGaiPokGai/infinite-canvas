@@ -89,7 +89,7 @@ export function CanvasTopBar({
                     <button
                         type="button"
                         onClick={onHome}
-                        className="flex h-7 shrink-0 items-center gap-1.5 rounded-full px-2 text-sm transition hover:bg-black/5 dark:hover:bg-white/10"
+                        className="flex h-7 shrink-0 items-center gap-1.5 rounded-full px-2 text-canvas-ui transition hover:bg-black/5 dark:hover:bg-white/10"
                         style={{ color: theme.node.text }}
                     >
                         <Home className="size-4" aria-hidden="true" />
@@ -161,7 +161,7 @@ export function CanvasTopBar({
                 </div>
             </div>
             <Modal title={t("canvas.shortcuts")} open={shortcutsOpen} onCancel={() => setShortcutsOpen(false)} footer={null} centered>
-                <div className="space-y-2 border-t pt-4 text-sm" style={{ borderColor: theme.node.stroke }}>
+                <div className="space-y-2 border-t pt-4 text-canvas-ui" style={{ borderColor: theme.node.stroke }}>
                     <Shortcut keys={["Ctrl / Space", t("canvas.shortcut.drag")]} value={t("canvas.shortcut.toggleTool")} />
                     <Shortcut keys={[t("canvas.shortcut.wheel")]} value={t("canvas.shortcut.zoom")} />
                     <Shortcut keys={[t("canvas.shortcut.zoomSlider")]} value={t("canvas.shortcut.preciseZoom")} />
@@ -188,7 +188,7 @@ function MenuLabel({ text, shortcut }: { text: string; shortcut: string }) {
     return (
         <span className="flex min-w-36 items-center justify-between gap-8">
             <span>{text}</span>
-            <span className="text-xs opacity-45">{shortcut}</span>
+            <span className="text-canvas-caption opacity-45">{shortcut}</span>
         </span>
     );
 }
@@ -200,7 +200,7 @@ function CompactAgentStatus({ status, onClick }: { status: { connected: boolean;
     const label = status.connected ? t("canvas.agentConnected") : status.enabled ? t("canvas.agentConnecting", { activity: status.activity || t("canvas.connecting") }) : t("canvas.agentDisconnected");
     const dotColor = status.connected ? "#22c55e" : status.enabled ? "#f59e0b" : theme.node.muted;
     return (
-        <button type="button" className="flex h-8 items-center gap-1.5 text-xs transition hover:opacity-75" style={{ color: status.connected ? "#16a34a" : status.enabled ? "#d97706" : theme.node.muted }} onClick={onClick} title={t("canvas.openAgent")}>
+        <button type="button" className="flex h-8 items-center gap-1.5 text-canvas-caption transition hover:opacity-75" style={{ color: status.connected ? "#16a34a" : status.enabled ? "#d97706" : theme.node.muted }} onClick={onClick} title={t("canvas.openAgent")}>
             <span className="size-2 rounded-full" style={{ background: dotColor }} />
             <span className="max-w-[140px] truncate">{label}</span>
         </button>
@@ -213,9 +213,9 @@ function Shortcut({ keys, value }: { keys: string[]; value: string }) {
             <span className="flex min-w-0 flex-wrap items-center gap-1.5">
                 {keys.map((key, index) => (
                     <span key={`${key}-${index}`} className="flex items-center gap-1.5">
-                        {index ? <span className="text-xs opacity-35">+</span> : null}
+                        {index ? <span className="text-canvas-caption opacity-35">+</span> : null}
                         <kbd
-                            className="min-w-9 rounded-md border px-2.5 py-1.5 text-center text-xs font-medium leading-none shadow-[inset_0_-1px_0_rgba(0,0,0,.08),0_1px_2px_rgba(0,0,0,.06)]"
+                            className="min-w-9 rounded-md border px-2.5 py-1.5 text-center text-canvas-caption font-medium leading-none shadow-[inset_0_-1px_0_rgba(0,0,0,.08),0_1px_2px_rgba(0,0,0,.06)]"
                             style={{ borderColor: "rgba(120,113,108,.28)", background: "linear-gradient(#fff, rgba(245,245,244,.92))", color: "rgb(68,64,60)" }}
                         >
                             {key}
@@ -223,7 +223,7 @@ function Shortcut({ keys, value }: { keys: string[]; value: string }) {
                     </span>
                 ))}
             </span>
-            <span className="text-right text-sm opacity-55">{value}</span>
+            <span className="text-right text-canvas-ui opacity-55">{value}</span>
         </div>
     );
 }

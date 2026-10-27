@@ -1,7 +1,5 @@
 import type { ReactNode } from "react";
-import { Compass, Focus, HelpCircle } from "lucide-react";
-import { useState } from "react";
-import { Button, Modal, Tooltip } from "antd";
+import { ChevronsLeft, ChevronsRight, Minus, Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { canvasThemes } from "@/lib/canvas-theme";
@@ -10,77 +8,38 @@ import { useThemeStore } from "@/stores/use-theme-store";
 type CanvasZoomControlsProps = {
     scale: number;
     onScaleChange: (scale: number) => void;
-    onReset: () => void;
     isMiniMapOpen: boolean;
     onToggleMiniMap: () => void;
+    children: ReactNode;
 };
 
-export function CanvasZoomControls({ scale, onScaleChange, onReset, isMiniMapOpen, onToggleMiniMap }: CanvasZoomControlsProps) {
-    const [shortcutsOpen, setShortcutsOpen] = useState(false);
+export function CanvasZoomControls({ scale, onScaleChange, isMiniMapOpen, onToggleMiniMap, children }: CanvasZoomControlsProps) {
     const { t } = useTranslation();
-    const colorTheme = useThemeStore((state) => state.theme);
-    const theme = canvasThemes[colorTheme];
-    const dockStyle = { background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.toolbar.item, boxShadow: colorTheme === "dark" ? "0 18px 45px rgba(0,0,0,.32)" : "0 16px 40px rgba(28,25,23,.12)" };
-    const activeStyle = { background: theme.toolbar.activeBg, color: theme.toolbar.activeText };
-
+    const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const buttonClass = "flex h-9 shrink-0 items-center justify-center rounded hover:bg-black/5 dark:hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-current";
     return (
-        <div className="absolute bottom-5 left-5 z-50" onMouseDown={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
-            <div className="flex h-14 items-center gap-1 rounded-xl border px-2 shadow-lg backdrop-blur" style={dockStyle}>
-                <Tooltip title={isMiniMapOpen ? t("canvas.miniMapClose") : t("canvas.miniMapOpen")}>
-                    <Button
-                        type="text"
-                        className="!h-8 !w-8 !min-w-8 !p-0"
-                        style={isMiniMapOpen ? activeStyle : { color: theme.toolbar.item }}
-                        icon={<Compass className="size-4" />}
-                        onClick={onToggleMiniMap}
-                        aria-label={isMiniMapOpen ? t("canvas.miniMapClose") : t("canvas.miniMapOpen")}
-                    />
-                </Tooltip>
-                <Tooltip title={t("canvas.resetView")}>
-                    <Button type="text" className="!h-8 !w-8 !min-w-8 !p-0" style={{ color: theme.toolbar.item }} icon={<Focus className="size-4" />} onClick={onReset} aria-label={t("canvas.resetView")} />
-                </Tooltip>
-                <Tooltip title={t("canvas.zoom")}>
-                    <input
-                        type="range"
-                        min="5"
-                        max="500"
-                        step="1"
-                        value={Math.round(scale * 100)}
-                        className="w-24"
-                        style={{ accentColor: theme.node.activeStroke }}
-                        onChange={(event) => onScaleChange(Number(event.target.value) / 100)}
-                        aria-label={t("canvas.zoom")}
-                    />
-                </Tooltip>
-                <span className="w-10 text-right text-xs tabular-nums" style={{ color: theme.node.muted }}>
+        <div
+            data-canvas-navigation
+            className="absolute bottom-0 left-0 z-50 overflow-hidden rounded-tr-lg transition-[width,height] duration-200 ease-out motion-reduce:transition-none"
+            style={{ width: isMiniMapOpen ? 164 : 90, height: isMiniMapOpen ? 136 : 36, background: theme.toolbar.panel, color: theme.toolbar.item }}
+            onPointerDown={(event) => event.stopPropagation()}
+            onMouseDown={(event) => event.stopPropagation()}
+            onDoubleClick={(event) => event.stopPropagation()}
+            onWheel={(event) => event.stopPropagation()}
+        >
+            <div className="flex h-9 items-center justify-between px-1">
+                {isMiniMapOpen && <button type="button" className={`${buttonClass} w-6`} aria-label="缩小" onClick={() => onScaleChange(scale / 1.2)}><Minus className="size-4" /></button>}
+                <button type="button" className={`${buttonClass} min-w-12 text-canvas-caption tabular-nums`} title="恢复 100%" aria-label="恢复缩放至 100%" onClick={() => onScaleChange(1)}>
                     {Math.round(scale * 100)}%
-                </span>
-                <Tooltip title={t("canvas.shortcuts")}>
-                    <Button type="text" className="!h-8 !w-8 !min-w-8 !p-0" style={shortcutsOpen ? activeStyle : { color: theme.toolbar.item }} icon={<HelpCircle className="size-4" />} onClick={() => setShortcutsOpen(true)} aria-label={t("canvas.shortcuts")} />
-                </Tooltip>
+                </button>
+                {isMiniMapOpen && <button type="button" className={`${buttonClass} w-6`} aria-label="放大" onClick={() => onScaleChange(scale * 1.2)}><Plus className="size-4" /></button>}
+                <button type="button" className={`${buttonClass} w-6`} style={{ color: theme.node.faint }} aria-expanded={isMiniMapOpen} aria-label={isMiniMapOpen ? t("canvas.miniMapClose") : t("canvas.miniMapOpen")} onClick={onToggleMiniMap}>
+                    {isMiniMapOpen ? <ChevronsLeft className="size-4" /> : <ChevronsRight className="size-4" />}
+                </button>
             </div>
-            <Modal title={t("canvas.shortcuts")} open={shortcutsOpen} onCancel={() => setShortcutsOpen(false)} footer={null} centered>
-                <div className="space-y-3 border-t pt-4 text-sm" style={{ borderColor: theme.node.stroke }}>
-                    <Shortcut label={`Ctrl / Space + ${t("canvas.shortcut.drag")}`} value={t("canvas.shortcut.toggleTool")} />
-                    <Shortcut label={t("canvas.shortcut.wheel")} value={t("canvas.shortcut.zoom")} />
-                    <Shortcut label={t("canvas.shortcut.drag")} value={t("canvas.shortcut.boxSelect")} />
-                    <Shortcut label={`Shift / Cmd + ${t("canvas.shortcut.click")}`} value={t("canvas.shortcut.addSelection")} />
-                    <Shortcut label="Ctrl / Cmd + C / V" value={t("canvas.shortcut.copyPasteNodes")} />
-                    <Shortcut label="Ctrl / Cmd + G" value={t("canvas.shortcut.group")} />
-                    <Shortcut label="Ctrl / Cmd + Shift + G" value={t("canvas.shortcut.ungroup")} />
-                    <Shortcut label="Delete / Backspace" value={t("canvas.shortcut.delete")} />
-                    <Shortcut label={`Alt + ${t("canvas.shortcut.leftClick")}`} value={t("canvas.shortcut.disconnect")} />
-                </div>
-            </Modal>
-        </div>
-    );
-}
-
-function Shortcut({ label, value }: { label: ReactNode; value: string }) {
-    return (
-        <div className="flex items-center justify-between gap-4">
-            <span className="text-base font-medium">{label}</span>
-            <span className="opacity-60">{value}</span>
+            <div aria-hidden={!isMiniMapOpen} className={`w-[164px] transition-opacity duration-200 motion-reduce:transition-none ${isMiniMapOpen ? "opacity-100" : "pointer-events-none opacity-0"}`}>
+                {children}
+            </div>
         </div>
     );
 }

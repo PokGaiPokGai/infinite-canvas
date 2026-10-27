@@ -17,6 +17,27 @@
     initial-value: -2px;
 }
 
+/* Canvas UI hierarchy: controls/body 13/20, captions 12/18, panel titles 14/20.
+   Shared by native controls, portal panels and Ant Design. Content typography is independent. */
+@theme {
+    --text-canvas-ui: 13px;
+    --text-canvas-ui--line-height: 20px;
+    --text-canvas-caption: 12px;
+    --text-canvas-caption--line-height: 18px;
+    --text-canvas-title: 14px;
+    --text-canvas-title--line-height: 20px;
+}
+
+.canvas-ui {
+    font-size: var(--text-canvas-ui);
+    line-height: var(--text-canvas-ui--line-height);
+}
+
+.canvas-ui :is(.ant-btn, .ant-segmented, .ant-input, .ant-input-number, .ant-select, .ant-select-selection-item) {
+    font-size: var(--text-canvas-ui);
+    line-height: var(--text-canvas-ui--line-height);
+}
+
 @theme inline {
     --color-background: var(--background);
     --color-foreground: var(--foreground);
@@ -472,8 +493,8 @@
 
         .canvas-composer-tools .canvas-composer-mode-button span {
             display: inline;
-            font-size: 12px;
-            line-height: 1;
+            font-size: var(--text-canvas-ui);
+            line-height: var(--text-canvas-ui--line-height);
         }
 
         .canvas-composer-icon.ant-btn {

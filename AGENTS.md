@@ -50,6 +50,10 @@
 
 ## 画布 UI 规范
 
+- 节点顶部操作条（单选、多选、插件动作和工具配置预览）统一复用 NodeToolbarAction 与 nodeToolbarClassName，仅显示图标，通过 Tooltip 和 aria-label 提供名称，不按节点类型增加常驻文字或显示文字开关。
+
+- 画布操作界面字号统一使用 globals.css 的 text-canvas-title（标题）、text-canvas-ui（按钮／参数／正文）、text-canvas-caption（说明／计数）语义层级；新面板复用 CanvasPanel 的默认字体及原生／Ant Design 统一规则，不为同类控件另设字号。用户文本内容与媒体展示不受此规则约束。
+
 - 做 canvas 前端 UI 时必须遵循当前画布主题。
 - 优先使用 `canvasThemes`、`useThemeStore` 或 Ant Design `ConfigProvider` token。
 - 不要硬编码黑白、stone、slate 等颜色导致浅色/深色主题不一致。

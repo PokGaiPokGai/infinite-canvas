@@ -1,6 +1,6 @@
-import type { ReactNode } from "react";
+import { NodeToolbarAction, nodeToolbarClassName } from "./node-toolbar-action";
 import { Group, Ungroup, Layers, Workflow } from "lucide-react";
-import { Tooltip } from "antd";
+
 import { useTranslation } from "react-i18next";
 
 import { canvasThemes } from "@/lib/canvas-theme";
@@ -66,30 +66,17 @@ export function CanvasSelectionToolbar({
             </svg>
             {showActions ? (
                 <div
-                    className="absolute z-[70] flex h-12 -translate-x-1/2 -translate-y-full items-center overflow-visible rounded-[18px] border border-black/10 bg-white text-[15px] text-[#242529] shadow-[0_8px_28px_rgba(15,23,42,.12)]"
+                    data-selection-toolbar className={`${nodeToolbarClassName} absolute z-[70] -translate-x-1/2 -translate-y-full overflow-visible`}
                     style={{ left: left + width / 2, top: top - 8 }}
                     onMouseDown={(event) => event.stopPropagation()}
                     onPointerDown={(event) => event.stopPropagation()}
                 >
-                    {canStack && onStack ? <SelectionAction title="将所选图片收为版本堆叠" label="版本堆叠" icon={<Layers className="size-4" />} onClick={onStack} /> : null}
-                    {canWorkflow && onWorkflow ? <SelectionAction title="将所选步骤保存为独立复用流程，保留原节点" label="保存为流程" icon={<Workflow className="size-4" />} onClick={onWorkflow} /> : null}
-                    {canGroup ? <SelectionAction title={t("canvas.nodeToolbar.groupTitle")} label={t("canvas.nodeToolbar.group")} icon={<Group className="size-4" />} onClick={onGroup} /> : null}
-                    {canUngroup ? <SelectionAction title={t("canvas.nodeToolbar.ungroupTitle")} label={t("canvas.nodeToolbar.ungroup")} icon={<Ungroup className="size-4" />} onClick={onUngroup} /> : null}
+                    {canStack && onStack ? <NodeToolbarAction title="将所选图片收为版本堆叠" icon={<Layers className="size-4" />} onClick={onStack} /> : null}
+                    {canWorkflow && onWorkflow ? <NodeToolbarAction title="将所选步骤保存为独立复用流程，保留原节点" icon={<Workflow className="size-4" />} onClick={onWorkflow} /> : null}
+                    {canGroup ? <NodeToolbarAction title={t("canvas.nodeToolbar.groupTitle")} icon={<Group className="size-4" />} onClick={onGroup} /> : null}
+                    {canUngroup ? <NodeToolbarAction title={t("canvas.nodeToolbar.ungroupTitle")} icon={<Ungroup className="size-4" />} onClick={onUngroup} /> : null}
                 </div>
             ) : null}
         </>
-    );
-}
-
-function SelectionAction({ title, label, icon, onClick }: { title: string; label: string; icon: ReactNode; onClick: () => void }) {
-    return (
-        <Tooltip title={title} placement="top" mouseEnterDelay={0.2} color="#ffffff" styles={{ root: { color: "#242529", boxShadow: "0 8px 24px rgba(15,23,42,.16)", fontSize: 13, fontWeight: 500 } }}>
-            <button type="button" className="group relative flex h-12 items-center whitespace-nowrap px-1.5" onClick={onClick} aria-label={title}>
-                <span className="flex h-9 items-center gap-2 rounded-lg px-2.5 transition group-hover:bg-[#f0f0f1]">
-                    {icon}
-                    <span>{label}</span>
-                </span>
-            </button>
-        </Tooltip>
     );
 }
