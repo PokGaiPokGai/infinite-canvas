@@ -52,6 +52,20 @@ def sources():
     return result
 
 
+def active_source_id(entries):
+    window = bpy.context.window
+    area = bpy.context.area
+    for info, source in entries:
+        if info["kind"] == "viewport" and source[0] == window and source[1] == area:
+            return info["id"]
+        if info["kind"] == "render" and area and area.type == "IMAGE_EDITOR" and area.spaces.active.image == source:
+            return info["id"]
+    # MCP timer callbacks may have no area. Only infer an unambiguous viewport
+    # in the current window; never select another window's first entry.
+    views = [info for info, source in entries if info["kind"] == "viewport" and source[0] == window]
+    return views[0]["id"] if len(views) == 1 else None
+
+
 def targets():
     result = []
     for material in bpy.data.materials:
@@ -310,9 +324,10 @@ def run(payload):
     try:
         current = state()
         if payload["operation"] == "status":
+            available_sources = sources()
             return {"connected": True, "version": 1, "sessionId": current["sessionId"], "blenderVersion": bpy.app.version_string,
                     "fileName": os.path.basename(bpy.data.filepath) or "未保存文件", "sceneName": bpy.context.scene.name,
-                    "sources": [info for info, _ in sources()], "targets": [info for info, _ in targets()],
+                    "sources": [info for info, _ in available_sources], "activeSourceId": active_source_id(available_sources), "targets": [info for info, _ in targets()],
                     "images": [info for _, info in images()]}
         if payload.get("sessionId") != current["sessionId"]:
             raise LinkError(409, "Blender 已重新打开文件或重启，请刷新后重新绑定。")

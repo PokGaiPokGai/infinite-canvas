@@ -122,6 +122,32 @@ function LinkContent({ ctx }: { ctx: CanvasNodeContext }) {
     const preview = link.mode === "write" && !link.pending ? input?.url || ctx.node.metadata?.content : ctx.node.metadata?.content;
     const key = `${ctx.projectId}:${ctx.node.id}`;
     const recovering = useWriteRecovery(ctx);
+    useEffect(() => {
+        if (recovering || !link.initializeFromActiveSource) return;
+        const controller = new AbortController();
+        const revision = useBlenderConnectionStore.getState().revision;
+        const currentUnbound = () => {
+            const current = ctx.getNode(ctx.node.id)?.metadata?.blender;
+            return current?.initializeFromActiveSource && current.mode === "read" && !current.sourceId && !current.sessionId && !current.pending ? current : null;
+        };
+        void getBlenderStatus(controller.signal).then(async status => {
+            if (controller.signal.aborted) return;
+            const current = currentUnbound();
+            if (!current) return;
+            const connectionChanged = revision !== useBlenderConnectionStore.getState().revision || useBlenderConnectionStore.getState().saving;
+            const source = !connectionChanged && status.connected && status.sessionId ? status.sources.find(item => item.id === status.activeSourceId) : undefined;
+            const next = { ...current, initializeFromActiveSource: false, sessionId: source ? status.sessionId : undefined, sourceId: source?.id };
+            ctx.updateMetadata({ blender: next, errorDetails: source ? undefined : connectionChanged ? "连接设置已变化，请在面板重新选择视口。" : status.error || "无法确定当前视口或渲染结果，请在面板选择读取来源。" });
+            if (source) await captureBlenderRead(ctx, next);
+        }).catch(error => {
+            if (controller.signal.aborted) return;
+            const current = currentUnbound();
+            if (current) ctx.updateMetadata({ blender: { ...current, initializeFromActiveSource: false }, errorDetails: `自动绑定未完成：${textOf(error)}` });
+        });
+        return () => controller.abort();
+        // Initialize only after write recovery; never follow later focus changes.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [ctx.node.id, recovering]);
     const reading = link.mode === "read" && ctx.node.metadata?.status === "loading" && active.has(key);
     const locked = recovering || reading || savingConnection || !!link.pending || active.has(key);
     const writeMode = link.writeMode || "image";
@@ -274,7 +300,7 @@ let registered = false;
 export function registerLocalBlenderNodes() {
     if (import.meta.env.VITE_LOCAL_SHARED_STORAGE !== "1" || registered) return;
     registered = true;
-    registerNodeDefinitions([{ type: BLENDER_LINK, category: "tools", title: "Blender Link", icon: <img src="/icons/blender.svg" alt="" className="size-4" />, description: "读取 Blender 视口／渲染图，更新或新建工程贴图", defaultSize: { width: 360, height: 360 }, defaultMetadata: { blender: { mode: "read", writeMode: "image", colorSpace: "sRGB" } }, hasSourceHandle: true, hasTargetHandle: node => node.metadata?.blender?.mode === "write", keepAspectRatio: () => true, Content: LinkContent, Panel: LinkPanel,
+    registerNodeDefinitions([{ type: BLENDER_LINK, category: "tools", title: "Blender Link", icon: <img src="/icons/blender.svg" alt="" className="size-4" />, description: "读取 Blender 视口／渲染图，更新或新建工程贴图", defaultSize: { width: 360, height: 360 }, defaultMetadata: { blender: { mode: "read", initializeFromActiveSource: true, writeMode: "image", colorSpace: "sRGB" } }, hasSourceHandle: true, hasTargetHandle: node => node.metadata?.blender?.mode === "write", keepAspectRatio: () => true, Content: LinkContent, Panel: LinkPanel,
         resource: node => node.metadata?.content && (node.metadata.blender?.mode === "read" || hasBlenderWriteOutput(node)) ? { kind: "image", url: node.metadata.content } : null,
     }], "local-blender-link");
 }
